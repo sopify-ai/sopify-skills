@@ -1,22 +1,27 @@
-# Sopify Agent
+# Sopify (Sop AI) Skills
 
 <div align="center">
 
-**自适应 AI 编程助手 - 根据任务复杂度智能选择工作流，简洁高效**
+**标准 Sop AI Skills - 配置驱动的 Codex/Claude 技能包：按任务复杂度自动路由执行流程**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#-快速开始) · [配置说明](#-配置说明)
+[![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
+[![版本](https://img.shields.io/badge/version-2026--01--15.1-orange.svg)](#版本历史)
+[![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+[English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
 
 </div>
 
 ---
 
-## 为什么选择 Sopify Agent？
+## 为什么选择 Sopify (Sop AI) Skills？
 
 **问题：** 传统 AI 编程助手对所有任务都使用相同的重量级流程 - 简单的 typo 修复也要走完整的需求分析、方案设计流程，效率低下且输出冗余。
 
-**解决方案：** Sopify Agent 引入**自适应工作流**，根据任务复杂度自动选择最优路径：
+**解决方案：** Sopify (Sop AI) Skills 引入**自适应工作流**，根据任务复杂度自动选择最优路径：
 
-| 任务类型 | 传统方式 | Sopify Agent |
+| 任务类型 | 传统方式 | Sopify (Sop AI) Skills |
 |---------|---------|--------------|
 | 简单修改 (≤2 文件) | 完整 3 阶段流程 | 直接执行，跳过规划 |
 | 中等任务 (3-5 文件) | 完整 3 阶段流程 | 轻量方案 (单文件) + 执行 |
@@ -93,7 +98,17 @@ cp -r Codex/Skills/EN/* ~/.codex/
 
 ### 配置文件
 
-在项目根目录创建 `sopify.config.yaml`：
+配置加载优先级（建议）：项目根 (`./sopify.config.yaml`) > 全局 (`~/.codex/sopify.config.yaml`，Claude 使用 `~/.claude/sopify.config.yaml`) > 内置默认值。
+
+默认不会自动写入配置文件。推荐首次使用直接复制示例配置到项目根目录：
+
+```bash
+cp examples/sopify.config.yaml ./sopify.config.yaml
+```
+
+Windows 环境：请手动复制 `examples/sopify.config.yaml` 到项目根并重命名为 `sopify.config.yaml`。
+
+在项目根目录创建（或使用示例复制生成的）`sopify.config.yaml`：
 
 ```yaml
 # 品牌名: auto(自动获取) 或 自定义
@@ -150,7 +165,7 @@ plan:
 
 ## 输出格式
 
-Sopify Agent 使用简洁的输出格式：
+Sopify (Sop AI) Skills 使用简洁的输出格式：
 
 ```
 [my-app-ai] 方案设计 ✓
@@ -198,7 +213,7 @@ Next: ~go exec 执行 或 回复修改意见
 
 ## 与 HelloAGENTS 的区别
 
-| 特性 | HelloAGENTS | Sopify Agent |
+| 特性 | HelloAGENTS | Sopify (Sop AI) Skills |
 |-----|-------------|--------------|
 | 品牌名 | 固定 "HelloAGENTS" | 动态 "{repo}-ai" |
 | 输出风格 | 多 emoji | 简洁文本 |
@@ -213,7 +228,7 @@ Next: ~go exec 执行 或 回复修改意见
 ## 文件说明
 
 ```
-sopify-agent/
+sopify-skills/
 ├── Claude/
 │   └── Skills/
 │       ├── CN/                 # 中文版
@@ -265,9 +280,18 @@ workflow:
 
 ---
 
+## 版本历史
+
+- 2026-01-15.1 - 初始版本（规则集与技能结构）
+
 ## 许可证
 
-Apache 2.0
+本仓库尝试采用双许可（以许可证文件为准）：
+
+- 代码与配置（含示例配置）：Apache 2.0（见 `LICENSE`）
+- 文档（主要为 Markdown）：CC BY 4.0（见 `LICENSE-docs`）
+
+如果你发现某些内容的来源/署名/许可信息可能需要补充（例如有参考或改进自其他开源仓库的部分），欢迎提 Issue 或在 PR 中说明。
 
 ---
 

@@ -1,22 +1,27 @@
-# Sopify Agent
+# Sopify (Sop AI) Skills
 
 <div align="center">
 
-**Adaptive AI Programming Assistant - Intelligently selects workflow based on task complexity**
+**Standard Sop AI Skills - Config-driven Codex/Claude skills with complexity-based workflow routing**
 
-[English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#-quick-start) · [Configuration](#-configuration)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
+[![Version](https://img.shields.io/badge/version-2026--01--15.1-orange.svg)](#version-history)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+[English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration)
 
 </div>
 
 ---
 
-## Why Sopify Agent?
+## Why Sopify (Sop AI) Skills?
 
 **The Problem:** Traditional AI programming assistants use the same heavyweight process for all tasks - even a simple typo fix requires full requirements analysis and solution design, resulting in low efficiency and verbose output.
 
-**The Solution:** Sopify Agent introduces **adaptive workflow**, automatically selecting the optimal path based on task complexity:
+**The Solution:** Sopify (Sop AI) Skills introduces **adaptive workflow**, automatically selecting the optimal path based on task complexity:
 
-| Task Type | Traditional Approach | Sopify Agent |
+| Task Type | Traditional Approach | Sopify (Sop AI) Skills |
 |-----------|---------------------|--------------|
 | Simple change (≤2 files) | Full 3-phase workflow | Direct execution, skip planning |
 | Medium task (3-5 files) | Full 3-phase workflow | Light plan (single file) + execution |
@@ -93,7 +98,17 @@ Show skills list
 
 ### Configuration File
 
-Create `sopify.config.yaml` in your project root:
+Config priority (recommended): project root (`./sopify.config.yaml`) > global (`~/.codex/sopify.config.yaml`, or `~/.claude/sopify.config.yaml` for Claude) > built-in defaults.
+
+By default, Sopify (Sop AI) Skills will not write config files automatically. For first-time setup, copy the example config into your project root:
+
+```bash
+cp examples/sopify.config.yaml ./sopify.config.yaml
+```
+
+On Windows, copy `examples/sopify.config.yaml` into your project root and rename it to `sopify.config.yaml`.
+
+Create (or use the copied) `sopify.config.yaml` in your project root:
 
 ```yaml
 # Brand name: auto(auto-detect) or custom
@@ -150,7 +165,7 @@ plan:
 
 ## Output Format
 
-Sopify Agent uses a concise output format:
+Sopify (Sop AI) Skills uses a concise output format:
 
 ```
 [my-app-ai] Solution Design ✓
@@ -198,7 +213,7 @@ Next: ~go exec to execute or reply with feedback
 
 ## Comparison with HelloAGENTS
 
-| Feature | HelloAGENTS | Sopify Agent |
+| Feature | HelloAGENTS | Sopify (Sop AI) Skills |
 |---------|-------------|--------------|
 | Brand name | Fixed "HelloAGENTS" | Dynamic "{repo}-ai" |
 | Output style | Many emojis | Clean text |
@@ -213,7 +228,7 @@ Next: ~go exec to execute or reply with feedback
 ## File Structure
 
 ```
-sopify-agent/
+sopify-skills/
 ├── Claude/
 │   └── Skills/
 │       ├── CN/                 # Chinese version
@@ -265,9 +280,20 @@ workflow:
 
 ---
 
+## Version History
+
+- 2026-01-15.1 - Initial version (ruleset and skill structure)
+
+---
+
 ## License
 
-Apache 2.0
+This repository is intended to use a dual-licensing approach (see license files for details):
+
+- Code and configs (including example configs): Apache 2.0 (see `LICENSE`)
+- Documentation (mostly Markdown): CC BY 4.0 (see `LICENSE-docs`)
+
+If you think any attribution or licensing details should be clarified (for example, if some parts were adapted from other open-source repositories), please open an issue or include details in your PR.
 
 ---
 
