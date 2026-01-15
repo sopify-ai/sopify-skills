@@ -22,8 +22,8 @@ description: Development phase rules; read when entering development; includes c
 ## Step 1: Read Task List
 
 ```yaml
-Source: .sopify/plan/{current_plan}/tasks.md
-        or .sopify/plan/{current_plan}/plan.md (light level)
+Source: .sopify-skills/plan/{current_plan}/tasks.md
+        or .sopify-skills/plan/{current_plan}/plan.md (light level)
 
 Parse: Extract all [ ] pending tasks
 Order: Execute in task number order
@@ -85,14 +85,14 @@ project.md:
 
 **Migration Path:**
 ```
-.sopify/plan/YYYYMMDD_feature/
+.sopify-skills/plan/YYYYMMDD_feature/
     ↓ Move to
-.sopify/history/YYYY-MM/YYYYMMDD_feature/
+.sopify-skills/history/YYYY-MM/YYYYMMDD_feature/
 ```
 
 **Update Index:**
 
-Add record to `.sopify/history/index.md`:
+Add record to `.sopify-skills/history/index.md`:
 
 ```markdown
 | YYYYMMDDHHMM | {feature name} | {type} | ✓ Completed | [link](YYYY-MM/YYYYMMDD_feature/) |
@@ -113,8 +113,8 @@ Tests: passed
 Changes: {N} files
   - src/xxx.vue
   - src/xxx.ts
-  - .sopify/wiki/modules/xxx.md
-  - .sopify/history/...
+  - .sopify-skills/wiki/modules/xxx.md
+  - .sopify-skills/history/...
 
 Next: Please verify the functionality
 ```

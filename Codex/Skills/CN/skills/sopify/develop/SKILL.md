@@ -22,8 +22,8 @@ description: 开发实施阶段详细规则；进入开发实施时读取；包�
 ## 步骤 1: 读取任务清单
 
 ```yaml
-来源: .sopify/plan/{current_plan}/tasks.md
-      或 .sopify/plan/{current_plan}/plan.md (light 级别)
+来源: .sopify-skills/plan/{current_plan}/tasks.md
+      或 .sopify-skills/plan/{current_plan}/plan.md (light 级别)
 
 解析: 提取所有 [ ] 待执行任务
 排序: 按任务编号顺序执行
@@ -85,14 +85,14 @@ project.md:
 
 **迁移路径：**
 ```
-.sopify/plan/YYYYMMDD_feature/
+.sopify-skills/plan/YYYYMMDD_feature/
     ↓ 移动至
-.sopify/history/YYYY-MM/YYYYMMDD_feature/
+.sopify-skills/history/YYYY-MM/YYYYMMDD_feature/
 ```
 
 **更新索引：**
 
-在 `.sopify/history/index.md` 添加记录：
+在 `.sopify-skills/history/index.md` 添加记录：
 
 ```markdown
 | YYYYMMDDHHMM | {功能名称} | {类型} | ✓ 已完成 | [链接](YYYY-MM/YYYYMMDD_feature/) |
@@ -113,8 +113,8 @@ project.md:
 Changes: {N} files
   - src/xxx.vue
   - src/xxx.ts
-  - .sopify/wiki/modules/xxx.md
-  - .sopify/history/...
+  - .sopify-skills/wiki/modules/xxx.md
+  - .sopify-skills/history/...
 
 Next: 请验证功能
 ```

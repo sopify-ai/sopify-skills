@@ -107,7 +107,7 @@ full (完整结构):
 ```markdown
 # 任务清单: {功能名称}
 
-目录: `.sopify/plan/YYYYMMDD_{feature}/`
+目录: `.sopify-skills/plan/YYYYMMDD_{feature}/`
 
 ## 1. {模块名称}
 - [ ] 1.1 在 `{文件路径}` 中实现 {功能}
@@ -125,7 +125,7 @@ full (完整结构):
 在 Standard 基础上增加：
 
 ```
-.sopify/plan/YYYYMMDD_feature/
+.sopify-skills/plan/YYYYMMDD_feature/
 ├── background.md
 ├── design.md
 ├── tasks.md
@@ -192,13 +192,13 @@ full (完整结构):
 ```
 [{BRAND_NAME}] 方案设计 ✓
 
-方案: .sopify/plan/{YYYYMMDD}_{feature}/
+方案: .sopify-skills/plan/{YYYYMMDD}_{feature}/
 概要: {一句话技术方案}
 任务: {N} 项
 
 ---
 Changes: {N} files
-  - .sopify/plan/...
+  - .sopify-skills/plan/...
 
 Next: ~go exec 执行 或 回复修改意见
 ```

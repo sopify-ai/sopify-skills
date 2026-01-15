@@ -132,7 +132,7 @@ workflow:
 # 方案包配置
 plan:
   level: auto           # auto / light / standard / full
-  directory: .sopify    # 知识库目录
+  directory: .sopify-skills    # 知识库目录
 ```
 
 ### 工作流模式
@@ -170,15 +170,15 @@ Sopify (Sop AI) Skills 使用简洁的输出格式：
 ```
 [my-app-ai] 方案设计 ✓
 
-方案: .sopify/plan/20260115_user_auth/
+方案: .sopify-skills/plan/20260115_user_auth/
 概要: JWT 认证 + Redis session 管理
 任务: 5 项
 
 ---
 Changes: 3 files
-  - .sopify/plan/20260115_user_auth/background.md
-  - .sopify/plan/20260115_user_auth/design.md
-  - .sopify/plan/20260115_user_auth/tasks.md
+  - .sopify-skills/plan/20260115_user_auth/background.md
+  - .sopify-skills/plan/20260115_user_auth/design.md
+  - .sopify-skills/plan/20260115_user_auth/tasks.md
 
 Next: ~go exec 执行 或 回复修改意见
 ```
@@ -194,7 +194,7 @@ Next: ~go exec 执行 或 回复修改意见
 ## 目录结构
 
 ```
-.sopify/                        # 知识库根目录
+.sopify-skills/                        # 知识库根目录
 ├── project.md                  # 项目技术约定
 ├── wiki/
 │   ├── overview.md            # 项目概述
@@ -264,7 +264,7 @@ workflow:
 
 ### Q: 方案包存放在哪里？
 
-默认存放在项目根目录的 `.sopify/` 目录下。可通过配置修改：
+默认存放在项目根目录的 `.sopify-skills/` 目录下。可通过配置修改：
 ```yaml
 plan:
   directory: .my-custom-dir

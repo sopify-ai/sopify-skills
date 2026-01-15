@@ -204,7 +204,7 @@ Records all completed changes for traceability.
 ```markdown
 # Task List: {Feature Name}
 
-Directory: `.sopify/plan/{YYYYMMDD}_{feature}/`
+Directory: `.sopify-skills/plan/{YYYYMMDD}_{feature}/`
 
 ## 1. {Core Feature Module}
 - [ ] 1.1 Implement {feature} in `{file path}`

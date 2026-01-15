@@ -24,7 +24,7 @@ Phase A (steps 1-4) → Critical checkpoint: Score ≥ require_score?
 
 ```yaml
 Condition: Code files exist in working directory AND requirement is not "new project"
-Execution: Check if .sopify/ directory exists
+Execution: Check if .sopify-skills/ directory exists
 Issue marking: If KB doesn't exist, mark for initialization
 ```
 

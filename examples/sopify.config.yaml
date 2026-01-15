@@ -52,8 +52,8 @@ plan:
   level: auto
 
   # Knowledge base directory (relative to project root)
-  # Default: .sopify (hidden directory)
-  directory: .sopify
+  # Default: .sopify-skills (hidden directory)
+  directory: .sopify-skills
 
 # ============================================================
 # ADVANCED CONFIGURATION (高级配置)

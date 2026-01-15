@@ -7,14 +7,14 @@ description: Knowledge base management skill; read during KB operations; include
 
 **Goal:** Manage project knowledge base, keep docs in sync with code
 
-**Knowledge Base Directory:** `.sopify/`
+**Knowledge Base Directory:** `.sopify-skills/`
 
 ---
 
 ## Knowledge Base Structure
 
 ```
-.sopify/
+.sopify-skills/
 ├── project.md              # Project technical conventions
 ├── wiki/
 │   ├── overview.md         # Project overview
@@ -40,14 +40,14 @@ description: Knowledge base management skill; read during KB operations; include
 Create all template files at once:
 ```yaml
 Create files:
-  - .sopify/project.md
-  - .sopify/wiki/overview.md
-  - .sopify/wiki/arch.md
-  - .sopify/wiki/api.md
-  - .sopify/wiki/data.md
-  - .sopify/wiki/modules/.gitkeep
-  - .sopify/plan/.gitkeep
-  - .sopify/history/index.md
+  - .sopify-skills/project.md
+  - .sopify-skills/wiki/overview.md
+  - .sopify-skills/wiki/arch.md
+  - .sopify-skills/wiki/api.md
+  - .sopify-skills/wiki/data.md
+  - .sopify-skills/wiki/modules/.gitkeep
+  - .sopify-skills/plan/.gitkeep
+  - .sopify-skills/history/index.md
 ```
 
 ### Progressive Mode (kb_init: progressive) [Default]
@@ -55,21 +55,21 @@ Create files:
 Create files as needed:
 ```yaml
 Initial setup:
-  - .sopify/project.md (required)
+  - .sopify-skills/project.md (required)
 
 First plan:
-  - .sopify/plan/ directory
-  - .sopify/history/index.md
+  - .sopify-skills/plan/ directory
+  - .sopify-skills/history/index.md
 
 First module documentation:
-  - .sopify/wiki/overview.md
-  - .sopify/wiki/modules/{module}.md
+  - .sopify-skills/wiki/overview.md
+  - .sopify-skills/wiki/modules/{module}.md
 
 First API documentation:
-  - .sopify/wiki/api.md
+  - .sopify-skills/wiki/api.md
 
 First data model documentation:
-  - .sopify/wiki/data.md
+  - .sopify-skills/wiki/data.md
 ```
 
 ---
@@ -78,7 +78,7 @@ First data model documentation:
 
 **Acquisition Flow:**
 ```
-1. Check if .sopify/ exists
+1. Check if .sopify-skills/ exists
 2. Exists → Read knowledge base files
 3. Doesn't exist or insufficient → Scan code
 ```
@@ -157,8 +157,8 @@ Strategy: {full/progressive}
 
 ---
 Changes: {N} files
-  - .sopify/project.md
-  - .sopify/wiki/overview.md
+  - .sopify-skills/project.md
+  - .sopify-skills/wiki/overview.md
   - ...
 
 Next: Knowledge base ready
@@ -172,7 +172,7 @@ Updated: {N} files
 
 ---
 Changes: {N} files
-  - .sopify/wiki/modules/xxx.md
+  - .sopify-skills/wiki/modules/xxx.md
   - ...
 
 Next: Documentation updated
@@ -185,7 +185,7 @@ Next: Documentation updated
 ```
 Need project context?
     │
-    ├─ .sopify/ exists?
+    ├─ .sopify-skills/ exists?
     │   ├─ Yes → Read knowledge base files
     │   └─ No → Scan code + Ask if init needed
     │

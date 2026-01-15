@@ -42,7 +42,7 @@ title_color: green
 workflow.mode: adaptive
 workflow.require_score: 7
 plan.level: auto
-plan.directory: .sopify
+plan.directory: .sopify-skills
 ```
 
 ### C2 | 输出格式
@@ -163,7 +163,7 @@ Next: {下一步提示}
 
 **目录结构：**
 ```
-.sopify/
+.sopify-skills/
 ├── plan/                    # 当前方案
 │   └── YYYYMMDD_feature/
 ├── history/                 # 已完成方案
@@ -176,9 +176,9 @@ Next: {下一步提示}
 ### A6 | 生命周期管理
 
 ```yaml
-方案创建: .sopify/plan/YYYYMMDD_feature_name/
-开发完成: 迁移至 .sopify/history/YYYY-MM/
-索引更新: .sopify/history/index.md
+方案创建: .sopify-skills/plan/YYYYMMDD_feature_name/
+开发完成: 迁移至 .sopify-skills/history/YYYY-MM/
+索引更新: .sopify-skills/history/index.md
 ```
 
 ---
@@ -289,15 +289,15 @@ Next: 继续方案设计？(Y/n)
 ```
 [my-app-ai] 方案设计 ✓
 
-方案: .sopify/plan/20260115_feature/
+方案: .sopify-skills/plan/20260115_feature/
 概要: {一句话技术方案}
 任务: {N} 项
 
 ---
 Changes: 3 files
-  - .sopify/plan/20260115_feature/background.md
-  - .sopify/plan/20260115_feature/design.md
-  - .sopify/plan/20260115_feature/tasks.md
+  - .sopify-skills/plan/20260115_feature/background.md
+  - .sopify-skills/plan/20260115_feature/design.md
+  - .sopify-skills/plan/20260115_feature/tasks.md
 
 Next: ~go exec 执行 或 回复修改意见
 ```
@@ -327,8 +327,8 @@ Changes: 5 files
   - src/components/xxx.vue
   - src/types/index.ts
   - src/hooks/useXxx.ts
-  - .sopify/wiki/modules/xxx.md
-  - .sopify/history/2026-01/...
+  - .sopify-skills/wiki/modules/xxx.md
+  - .sopify-skills/history/2026-01/...
 
 Next: 请验证功能
 ```
@@ -360,6 +360,6 @@ Next: 请验证功能
 
 **配置文件：** `sopify.config.yaml` (项目根目录)
 
-**知识库目录：** `.sopify/`
+**知识库目录：** `.sopify-skills/`
 
-**方案包路径：** `.sopify/plan/YYYYMMDD_feature_name/`
+**方案包路径：** `.sopify-skills/plan/YYYYMMDD_feature_name/`

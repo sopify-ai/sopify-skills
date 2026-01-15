@@ -107,7 +107,7 @@ full (complete structure):
 ```markdown
 # Task List: {Feature Name}
 
-Directory: `.sopify/plan/YYYYMMDD_{feature}/`
+Directory: `.sopify-skills/plan/YYYYMMDD_{feature}/`
 
 ## 1. {Module Name}
 - [ ] 1.1 Implement {feature} in `{file path}`
@@ -125,7 +125,7 @@ Directory: `.sopify/plan/YYYYMMDD_{feature}/`
 Adds to Standard:
 
 ```
-.sopify/plan/YYYYMMDD_feature/
+.sopify-skills/plan/YYYYMMDD_feature/
 ├── background.md
 ├── design.md
 ├── tasks.md
@@ -192,13 +192,13 @@ Task categories:
 ```
 [{BRAND_NAME}] Solution Design ✓
 
-Plan: .sopify/plan/{YYYYMMDD}_{feature}/
+Plan: .sopify-skills/plan/{YYYYMMDD}_{feature}/
 Summary: {one-line technical solution}
 Tasks: {N} items
 
 ---
 Changes: {N} files
-  - .sopify/plan/...
+  - .sopify-skills/plan/...
 
 Next: ~go exec to execute or reply with feedback
 ```

@@ -204,7 +204,7 @@ description: 文档模板集合；创建文档时读取；包含所有知识库�
 ```markdown
 # 任务清单: {功能名称}
 
-目录: `.sopify/plan/{YYYYMMDD}_{feature}/`
+目录: `.sopify-skills/plan/{YYYYMMDD}_{feature}/`
 
 ## 1. {核心功能模块}
 - [ ] 1.1 在 `{文件路径}` 中实现 {功能}

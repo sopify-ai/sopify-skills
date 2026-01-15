@@ -42,7 +42,7 @@ title_color: green
 workflow.mode: adaptive
 workflow.require_score: 7
 plan.level: auto
-plan.directory: .sopify
+plan.directory: .sopify-skills
 ```
 
 ### C2 | Output Format
@@ -163,7 +163,7 @@ Complex: Files > 5, architectural changes, new features
 
 **Directory Structure:**
 ```
-.sopify/
+.sopify-skills/
 ├── plan/                    # Current plans
 │   └── YYYYMMDD_feature/
 ├── history/                 # Completed plans
@@ -176,9 +176,9 @@ Complex: Files > 5, architectural changes, new features
 ### A6 | Lifecycle Management
 
 ```yaml
-Plan Creation: .sopify/plan/YYYYMMDD_feature_name/
-Development Complete: Migrate to .sopify/history/YYYY-MM/
-Index Update: .sopify/history/index.md
+Plan Creation: .sopify-skills/plan/YYYYMMDD_feature_name/
+Development Complete: Migrate to .sopify-skills/history/YYYY-MM/
+Index Update: .sopify-skills/history/index.md
 ```
 
 ---
@@ -289,15 +289,15 @@ Next: Continue to solution design? (Y/n)
 ```
 [my-app-ai] Solution Design ✓
 
-Plan: .sopify/plan/20260115_feature/
+Plan: .sopify-skills/plan/20260115_feature/
 Summary: {one-line technical solution}
 Tasks: {N} items
 
 ---
 Changes: 3 files
-  - .sopify/plan/20260115_feature/background.md
-  - .sopify/plan/20260115_feature/design.md
-  - .sopify/plan/20260115_feature/tasks.md
+  - .sopify-skills/plan/20260115_feature/background.md
+  - .sopify-skills/plan/20260115_feature/design.md
+  - .sopify-skills/plan/20260115_feature/tasks.md
 
 Next: ~go exec to execute or reply with feedback
 ```
@@ -327,8 +327,8 @@ Changes: 5 files
   - src/components/xxx.vue
   - src/types/index.ts
   - src/hooks/useXxx.ts
-  - .sopify/wiki/modules/xxx.md
-  - .sopify/history/2026-01/...
+  - .sopify-skills/wiki/modules/xxx.md
+  - .sopify-skills/history/2026-01/...
 
 Next: Please verify the functionality
 ```
@@ -360,6 +360,6 @@ Next: Please verify the functionality
 
 **Configuration File:** `sopify.config.yaml` (project root)
 
-**Knowledge Base Directory:** `.sopify/`
+**Knowledge Base Directory:** `.sopify-skills/`
 
-**Plan Package Path:** `.sopify/plan/YYYYMMDD_feature_name/`
+**Plan Package Path:** `.sopify-skills/plan/YYYYMMDD_feature_name/`

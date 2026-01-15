@@ -7,14 +7,14 @@ description: 知识库管理技能；知识库操作时读取；包含初始化�
 
 **目标：** 管理项目知识库，保持文档与代码同步
 
-**知识库目录：** `.sopify/`
+**知识库目录：** `.sopify-skills/`
 
 ---
 
 ## 知识库结构
 
 ```
-.sopify/
+.sopify-skills/
 ├── project.md              # 项目技术约定
 ├── wiki/
 │   ├── overview.md         # 项目概述
@@ -40,14 +40,14 @@ description: 知识库管理技能；知识库操作时读取；包含初始化�
 一次性创建所有模板文件：
 ```yaml
 创建文件:
-  - .sopify/project.md
-  - .sopify/wiki/overview.md
-  - .sopify/wiki/arch.md
-  - .sopify/wiki/api.md
-  - .sopify/wiki/data.md
-  - .sopify/wiki/modules/.gitkeep
-  - .sopify/plan/.gitkeep
-  - .sopify/history/index.md
+  - .sopify-skills/project.md
+  - .sopify-skills/wiki/overview.md
+  - .sopify-skills/wiki/arch.md
+  - .sopify-skills/wiki/api.md
+  - .sopify-skills/wiki/data.md
+  - .sopify-skills/wiki/modules/.gitkeep
+  - .sopify-skills/plan/.gitkeep
+  - .sopify-skills/history/index.md
 ```
 
 ### Progressive 模式 (kb_init: progressive) [默认]
@@ -55,21 +55,21 @@ description: 知识库管理技能；知识库操作时读取；包含初始化�
 按需创建文件：
 ```yaml
 首次初始化:
-  - .sopify/project.md (必须)
+  - .sopify-skills/project.md (必须)
 
 首个方案时:
-  - .sopify/plan/ 目录
-  - .sopify/history/index.md
+  - .sopify-skills/plan/ 目录
+  - .sopify-skills/history/index.md
 
 首次涉及模块文档时:
-  - .sopify/wiki/overview.md
-  - .sopify/wiki/modules/{module}.md
+  - .sopify-skills/wiki/overview.md
+  - .sopify-skills/wiki/modules/{module}.md
 
 首次涉及 API 时:
-  - .sopify/wiki/api.md
+  - .sopify-skills/wiki/api.md
 
 首次涉及数据模型时:
-  - .sopify/wiki/data.md
+  - .sopify-skills/wiki/data.md
 ```
 
 ---
@@ -78,7 +78,7 @@ description: 知识库管理技能；知识库操作时读取；包含初始化�
 
 **获取流程：**
 ```
-1. 检查 .sopify/ 是否存在
+1. 检查 .sopify-skills/ 是否存在
 2. 存在 → 读取知识库文件
 3. 不存在或信息不足 → 扫描代码获取
 ```
@@ -157,8 +157,8 @@ description: 知识库管理技能；知识库操作时读取；包含初始化�
 
 ---
 Changes: {N} files
-  - .sopify/project.md
-  - .sopify/wiki/overview.md
+  - .sopify-skills/project.md
+  - .sopify-skills/wiki/overview.md
   - ...
 
 Next: 知识库已就绪
@@ -172,7 +172,7 @@ Next: 知识库已就绪
 
 ---
 Changes: {N} files
-  - .sopify/wiki/modules/xxx.md
+  - .sopify-skills/wiki/modules/xxx.md
   - ...
 
 Next: 文档已更新
@@ -185,7 +185,7 @@ Next: 文档已更新
 ```
 需要获取项目上下文?
     │
-    ├─ .sopify/ 存在?
+    ├─ .sopify-skills/ 存在?
     │   ├─ 是 → 读取知识库文件
     │   └─ 否 → 扫描代码 + 询问是否初始化
     │

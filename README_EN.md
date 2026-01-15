@@ -132,7 +132,7 @@ workflow:
 # Plan package configuration
 plan:
   level: auto           # auto / light / standard / full
-  directory: .sopify    # Knowledge base directory
+  directory: .sopify-skills    # Knowledge base directory
 ```
 
 ### Workflow Modes
@@ -170,15 +170,15 @@ Sopify (Sop AI) Skills uses a concise output format:
 ```
 [my-app-ai] Solution Design ✓
 
-Plan: .sopify/plan/20260115_user_auth/
+Plan: .sopify-skills/plan/20260115_user_auth/
 Summary: JWT auth + Redis session management
 Tasks: 5 items
 
 ---
 Changes: 3 files
-  - .sopify/plan/20260115_user_auth/background.md
-  - .sopify/plan/20260115_user_auth/design.md
-  - .sopify/plan/20260115_user_auth/tasks.md
+  - .sopify-skills/plan/20260115_user_auth/background.md
+  - .sopify-skills/plan/20260115_user_auth/design.md
+  - .sopify-skills/plan/20260115_user_auth/tasks.md
 
 Next: ~go exec to execute or reply with feedback
 ```
@@ -194,7 +194,7 @@ Next: ~go exec to execute or reply with feedback
 ## Directory Structure
 
 ```
-.sopify/                        # Knowledge base root
+.sopify-skills/                        # Knowledge base root
 ├── project.md                  # Project technical conventions
 ├── wiki/
 │   ├── overview.md            # Project overview
@@ -264,7 +264,7 @@ workflow:
 
 ### Q: Where are plan packages stored?
 
-Default location is `.sopify/` in your project root. Configurable via:
+Default location is `.sopify-skills/` in your project root. Configurable via:
 ```yaml
 plan:
   directory: .my-custom-dir
