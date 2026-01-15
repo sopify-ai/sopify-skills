@@ -270,6 +270,8 @@ plan:
   directory: .my-custom-dir
 ```
 
+Note: Changing `plan.directory` only affects newly generated knowledge base/plan files. Existing history in the old directory will not be migrated automatically; move it manually if needed, or keep the value unchanged.
+
 ### Q: How to skip requirement scoring follow-ups?
 
 Set `auto_decide: true`:

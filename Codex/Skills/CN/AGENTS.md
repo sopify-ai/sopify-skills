@@ -45,6 +45,8 @@ plan.level: auto
 plan.directory: .sopify-skills
 ```
 
+说明：修改 `plan.directory` 只影响后续新生成的知识库/方案文件目录，默认不会自动迁移旧目录内容。
+
 ### C2 | 输出格式
 
 **统一输出模板：**

@@ -45,6 +45,8 @@ plan.level: auto
 plan.directory: .sopify-skills
 ```
 
+Note: Changing `plan.directory` only affects newly generated knowledge base/plan files. Existing data in the old directory will not be migrated automatically.
+
 ### C2 | Output Format
 
 **Unified Output Template:**

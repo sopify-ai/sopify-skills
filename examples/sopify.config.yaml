@@ -53,6 +53,7 @@ plan:
 
   # Knowledge base directory (relative to project root)
   # Default: .sopify-skills (hidden directory)
+  # Note: Changing this does not migrate existing history from the old directory.
   directory: .sopify-skills
 
 # ============================================================

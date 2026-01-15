@@ -270,6 +270,8 @@ plan:
   directory: .my-custom-dir
 ```
 
+注意：修改 `plan.directory` 仅影响后续新生成的知识库/方案文件目录，默认不会自动迁移旧目录中的历史内容；如需迁移请手动移动目录或保持该值不变。
+
 ### Q: 如何跳过需求评分追问？
 
 设置 `auto_decide: true`：
