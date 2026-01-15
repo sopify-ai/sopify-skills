@@ -1,0 +1,75 @@
+# sopify.config.yaml - Sopify Agent Configuration
+# Place this file in your project root directory
+# All options have sensible defaults - only configure what you need to change
+
+# ============================================================
+# CORE CONFIGURATION (核心配置)
+# ============================================================
+
+# Brand name displayed in output
+# "auto" = automatically detect from git remote or package.json
+# Or set a custom name like "my-project-ai"
+brand: auto
+
+# Output language: zh-CN (简体中文) | en-US (English)
+language: zh-CN
+
+# Output style: minimal (clean, less emoji) | classic (with emoji)
+output_style: minimal
+
+# Title color in terminal: green | blue | yellow | cyan | none
+title_color: green
+
+# ============================================================
+# WORKFLOW CONFIGURATION (工作流配置)
+# ============================================================
+
+workflow:
+  # Workflow mode:
+  # - strict: Always follow 3-phase process (analyze → design → develop)
+  # - adaptive: Auto-select based on task complexity (recommended)
+  # - minimal: Skip planning, execute directly
+  mode: adaptive
+
+  # Requirement score threshold (1-10)
+  # Tasks scoring below this will trigger follow-up questions
+  require_score: 7
+
+  # When true, AI decides autonomously even with low scores
+  # When false, always ask user for clarification
+  auto_decide: false
+
+# ============================================================
+# PLAN PACKAGE CONFIGURATION (方案包配置)
+# ============================================================
+
+plan:
+  # Plan level:
+  # - auto: Select based on task complexity
+  # - light: Single file (plan.md)
+  # - standard: Three files (background.md, design.md, tasks.md)
+  # - full: Complete structure with ADR and diagrams
+  level: auto
+
+  # Knowledge base directory (relative to project root)
+  # Default: .sopify (hidden directory)
+  directory: .sopify
+
+# ============================================================
+# ADVANCED CONFIGURATION (高级配置)
+# ============================================================
+
+advanced:
+  # EHRB (Extreme High-Risk Behavior) detection level:
+  # - strict: Block all risky operations
+  # - normal: Warn and require confirmation
+  # - relaxed: Only warn, don't block
+  ehrb_level: normal
+
+  # Knowledge base initialization strategy:
+  # - full: Create all template files at once
+  # - progressive: Create files as needed
+  kb_init: progressive
+
+  # Cache project info for faster startup
+  cache_project: true
