@@ -51,7 +51,7 @@
 
 ```bash
 # 中文版
-cp -r Claude/Skills/CN/* ~/.claude/
+cp -r Codex/Skills/CN/* ~/.codex/
 
 # 英文版
 cp -r Claude/Skills/EN/* ~/.claude/
@@ -188,6 +188,10 @@ Next: ~go exec 执行 或 回复修改意见
 - `?` 等待输入
 - `!` 警告
 - `×` 错误
+
+**阶段名使用：**
+- `命令完成`：用于带命令前缀的流程输出（`~go/~go plan/~go exec`）
+- `咨询问答`：用于无命令前缀的问答/澄清场景
 
 ---
 

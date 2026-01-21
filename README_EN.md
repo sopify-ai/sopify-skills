@@ -189,6 +189,10 @@ Next: ~go exec to execute or reply with feedback
 - `!` Warning
 - `×` Error
 
+**Phase Naming:**
+- `Command Complete`: for command-prefixed flows (`~go/~go plan/~go exec`)
+- `Q&A`: for non-command questions/clarifications
+
 ---
 
 ## Directory Structure

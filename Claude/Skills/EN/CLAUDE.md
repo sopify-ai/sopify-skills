@@ -74,7 +74,8 @@ Next: {Next step hint}
 **Phase Names:**
 - Requirements Analysis, Solution Design, Development
 - Quick Fix, Light Iteration
-- Command Complete
+- Command Complete (command-prefixed flows only, e.g., `~go/~go plan/~go exec`)
+- Q&A (non-command questions/clarifications)
 
 **Output Principles:**
 - Core info visible in one screen
