@@ -135,6 +135,8 @@ plan:
   directory: .sopify-skills    # Knowledge base directory
 ```
 
+Note: `title_color` only applies lightweight styling to the output title line; if color is unsupported, output falls back to plain text automatically.
+
 ### Workflow Modes
 
 | Mode | Description | Use Case |
@@ -160,6 +162,22 @@ plan:
 | `~go` | Full workflow auto-execution |
 | `~go plan` | Plan only, no execution |
 | `~go exec` | Execute existing plan |
+
+---
+
+## Sync Mechanism (for maintainers)
+
+To avoid drift between Codex/Claude and CN/EN skill files, use the built-in sync/check scripts:
+
+```bash
+# 1) Sync Codex source-of-truth files to Claude mirror files
+bash scripts/sync-skills.sh
+
+# 2) Verify all four bundles are aligned
+bash scripts/check-skills-sync.sh
+```
+
+Before committing skill/rule updates, always run `sync -> check`.
 
 ---
 
@@ -203,6 +221,9 @@ Next: ~go exec to execute or reply with feedback
 ├── wiki/
 │   ├── overview.md            # Project overview
 │   └── modules/               # Module documentation
+├── user/
+│   ├── preferences.md         # Long-term user preferences
+│   └── feedback.jsonl         # Raw feedback events
 ├── plan/                       # Current plans
 │   └── YYYYMMDD_feature/
 │       ├── background.md      # Requirement background (formerly why.md)
@@ -284,11 +305,24 @@ workflow:
   auto_decide: true
 ```
 
+### Q: How do I reset learned user preferences?
+
+Delete (or clear) `.sopify-skills/user/preferences.md` to reset long-term preferences. Keep `feedback.jsonl` only if you want audit history.
+
+### Q: When should I run sync scripts?
+
+After editing rule files under `Codex/Skills/{CN,EN}`, run:
+```bash
+bash scripts/sync-skills.sh
+bash scripts/check-skills-sync.sh
+```
+If check fails, rerun `sync` before committing.
+
 ---
 
 ## Version History
 
-- 2026-01-15.1 - Initial version (ruleset and skill structure)
+- Detailed release notes are maintained manually in `CHANGELOG.md`.
 
 ---
 

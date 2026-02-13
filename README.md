@@ -51,7 +51,7 @@
 
 ```bash
 # 中文版
-cp -r Codex/Skills/CN/* ~/.codex/
+cp -r Claude/Skills/CN/* ~/.claude/
 
 # 英文版
 cp -r Claude/Skills/EN/* ~/.claude/
@@ -135,6 +135,8 @@ plan:
   directory: .sopify-skills    # 知识库目录
 ```
 
+说明：`title_color` 仅作用于输出标题行的轻量着色；终端不支持颜色时自动回退为纯文本。
+
 ### 工作流模式
 
 | 模式 | 说明 | 适用场景 |
@@ -160,6 +162,22 @@ plan:
 | `~go` | 全流程自动执行 |
 | `~go plan` | 只规划不执行 |
 | `~go exec` | 执行已有方案 |
+
+---
+
+## 同步机制（维护者）
+
+为避免 Codex/Claude 与中英文规则漂移，仓库内置同步与校验脚本：
+
+```bash
+# 1) 从 Codex 真源同步到 Claude 镜像
+bash scripts/sync-skills.sh
+
+# 2) 校验四套文件是否一致
+bash scripts/check-skills-sync.sh
+```
+
+建议在提交技能规则改动前固定执行一次 `sync -> check`。
 
 ---
 
@@ -203,6 +221,9 @@ Next: ~go exec 执行 或 回复修改意见
 ├── wiki/
 │   ├── overview.md            # 项目概述
 │   └── modules/               # 模块文档
+├── user/
+│   ├── preferences.md         # 用户长期偏好
+│   └── feedback.jsonl         # 原始反馈事件
 ├── plan/                       # 当前方案
 │   └── YYYYMMDD_feature/
 │       ├── background.md      # 需求背景 (原 why.md)
@@ -284,11 +305,24 @@ workflow:
   auto_decide: true
 ```
 
+### Q: 用户偏好如何重置？
+
+删除（或清空）`.sopify-skills/user/preferences.md` 即可重置长期偏好；`feedback.jsonl` 可按需保留用于审计。
+
+### Q: 同步脚本什么时候用？
+
+当你修改 `Codex/Skills/{CN,EN}` 下的规则文件后，运行：
+```bash
+bash scripts/sync-skills.sh
+bash scripts/check-skills-sync.sh
+```
+若校验失败，先重新执行 `sync` 再提交。
+
 ---
 
 ## 版本历史
 
-- 2026-01-15.1 - 初始版本（规则集与技能结构）
+- 详细变更记录见 `CHANGELOG.md`（手工维护）
 
 ## 许可证
 
