@@ -6,6 +6,8 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-02-13] - 2026-02-13
+
 ### Added
 
 - Sync scripts for keeping Codex/Claude skill bundles aligned:

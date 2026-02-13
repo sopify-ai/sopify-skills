@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--01--15.1-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--02--13-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration)
