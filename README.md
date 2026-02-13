@@ -216,20 +216,20 @@ Next: ~go exec 执行 或 回复修改意见
 ## 目录结构
 
 ```
-.sopify-skills/                        # 知识库根目录
-├── project.md                  # 项目技术约定
+.sopify-skills/                # 知识库根目录
+├── project.md                 # 项目技术约定
 ├── wiki/
 │   ├── overview.md            # 项目概述
 │   └── modules/               # 模块文档
 ├── user/
 │   ├── preferences.md         # 用户长期偏好
 │   └── feedback.jsonl         # 原始反馈事件
-├── plan/                       # 当前方案
+├── plan/                      # 当前方案
 │   └── YYYYMMDD_feature/
 │       ├── background.md      # 需求背景 (原 why.md)
 │       ├── design.md          # 技术设计 (原 how.md)
 │       └── tasks.md           # 任务清单 (原 task.md)
-└── history/                    # 历史方案
+└── history/                   # 历史方案
     ├── index.md
     └── YYYY-MM/
 ```
