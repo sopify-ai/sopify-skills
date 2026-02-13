@@ -77,6 +77,24 @@ wiki/overview.md:
 
 project.md:
   - Update technical conventions (if changed)
+
+user/preferences.md:
+  - Append or update only when user explicitly states long-term preference
+  - Keep preferences structured, reusable, and traceable
+
+user/feedback.jsonl:
+  - Record key feedback events (time, context, raw phrasing, whether promoted to long-term preference)
+```
+
+**Preference Write Conditions (Conservative Learning):**
+```yaml
+Allowed:
+  - User explicitly states long-term preference (e.g. "use this by default going forward")
+
+Disallowed:
+  - One-off instructions
+  - Guesswork from incomplete context
+  - Generalized conclusions unrelated to current task
 ```
 
 ---

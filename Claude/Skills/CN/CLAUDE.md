@@ -46,6 +46,7 @@ plan.directory: .sopify-skills
 ```
 
 说明：修改 `plan.directory` 只影响后续新生成的知识库/方案文件目录，默认不会自动迁移旧目录内容。
+说明：`title_color` 仅作用于输出标题行的轻量着色；若终端不支持颜色则自动回退为纯文本。
 
 ### C2 | 输出格式
 
@@ -81,6 +82,7 @@ Next: {下一步提示}
 - 核心信息一屏可见
 - 详细内容写入文件
 - 避免冗余描述
+- 标题行可根据 `title_color` 轻量着色（仅标题行），不支持颜色时自动回退纯文本
 
 ### C3 | 工作流模式
 
@@ -173,6 +175,9 @@ Next: {下一步提示}
 ├── wiki/                    # 项目文档
 │   ├── overview.md
 │   └── modules/
+├── user/                    # 用户偏好与反馈
+│   ├── preferences.md
+│   └── feedback.jsonl
 └── project.md               # 技术约定
 ```
 

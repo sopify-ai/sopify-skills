@@ -46,6 +46,7 @@ plan.directory: .sopify-skills
 ```
 
 Note: Changing `plan.directory` only affects newly generated knowledge base/plan files. Existing data in the old directory will not be migrated automatically.
+Note: `title_color` applies only to lightweight styling of the output title line. If color is unsupported, automatically fallback to plain text.
 
 ### C2 | Output Format
 
@@ -81,6 +82,7 @@ Next: {Next step hint}
 - Core info visible in one screen
 - Detailed content in files
 - Avoid redundant descriptions
+- The title line can be lightly colored via `title_color` (title line only); fallback to plain text when color is unsupported
 
 ### C3 | Workflow Modes
 
@@ -173,6 +175,9 @@ Complex: Files > 5, architectural changes, new features
 ├── wiki/                    # Project docs
 │   ├── overview.md
 │   └── modules/
+├── user/                    # User preferences and feedback
+│   ├── preferences.md
+│   └── feedback.jsonl
 └── project.md               # Technical conventions
 ```
 

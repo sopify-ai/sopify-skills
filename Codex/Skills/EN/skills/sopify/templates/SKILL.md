@@ -123,6 +123,35 @@ Records all completed changes for traceability.
 
 ---
 
+### user/preferences.md
+
+```markdown
+# Long-Term User Preferences
+
+> Record only explicitly stated long-term preferences; do not store one-off instructions.
+
+## Preference List
+
+| ID | Category | Preference | Scope | Source Date | Status |
+|----|----------|------------|-------|-------------|--------|
+| pref-001 | Output format | Keep title concise and limit core info to 3 lines | Project-wide | 2026-01-15 | active |
+
+## Notes
+- Priority: explicit requirement in current task > preference file > default rules
+- Update policy: new preference must be restatable, verifiable, and reversible
+```
+
+---
+
+### user/feedback.jsonl
+
+```json
+{"timestamp":"2026-01-15T10:30:00Z","source":"chat","message":"Use a minimal change list by default next time","scope":"planning","promote_to_preference":true,"preference_id":"pref-002"}
+{"timestamp":"2026-01-15T11:10:00Z","source":"chat","message":"Make this response more detailed","scope":"current_task","promote_to_preference":false}
+```
+
+---
+
 ## A2 | Plan File Templates
 
 ### Light Level - plan.md

@@ -31,9 +31,16 @@ Issue marking: If KB doesn't exist, mark for initialization
 ### Step 2: Acquire Project Context
 
 ```yaml
-Execution: Read knowledge base → Scan codebase if insufficient
+Execution: Read .sopify-skills/user/preferences.md and knowledge base first → Scan codebase if insufficient
 Detailed rules: Refer to kb Skill
 Purpose: Provide complete project context for scoring and follow-up
+```
+
+**Preference Application Rules:**
+```yaml
+1. Use only explicitly stated long-term user preferences
+2. Explicit requirements in the current task override historical preferences
+3. If no matching preference exists, follow default rules
 ```
 
 ### Step 3: Requirement Type Determination
@@ -101,6 +108,7 @@ Next: Please answer the questions, or type "continue" to skip
 - Don't ask known information (tech stack, framework can be obtained from code)
 - Only ask user-related information (specific requirements, business logic, expectations)
 - Question count: 3-5
+- Do not re-ask long-term preferences already captured in preferences.md
 
 ---
 

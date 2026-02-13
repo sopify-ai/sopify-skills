@@ -23,6 +23,9 @@ description: Knowledge base management skill; read during KB operations; include
 │   ├── data.md             # Data models (optional)
 │   └── modules/            # Module documentation
 │       └── {module}.md
+├── user/
+│   ├── preferences.md      # Long-term user preferences
+│   └── feedback.jsonl      # Raw feedback events
 ├── plan/                   # Current plans
 │   └── YYYYMMDD_feature/
 └── history/                # Historical plans
@@ -45,6 +48,8 @@ Create files:
   - .sopify-skills/wiki/arch.md
   - .sopify-skills/wiki/api.md
   - .sopify-skills/wiki/data.md
+  - .sopify-skills/user/preferences.md
+  - .sopify-skills/user/feedback.jsonl
   - .sopify-skills/wiki/modules/.gitkeep
   - .sopify-skills/plan/.gitkeep
   - .sopify-skills/history/index.md
@@ -70,6 +75,10 @@ First API documentation:
 
 First data model documentation:
   - .sopify-skills/wiki/data.md
+
+First explicit "long-term preference" statement:
+  - .sopify-skills/user/preferences.md
+  - .sopify-skills/user/feedback.jsonl
 ```
 
 ---
@@ -116,11 +125,13 @@ Must update:
   - API interface changed
   - Data model changed
   - Technical convention changed
+  - User explicitly states a long-term preference (e.g. "use this by default")
 
 No update needed:
   - Bug fixes (no interface changes)
   - Internal implementation optimization
   - Code formatting adjustments
+  - One-off temporary requests (not long-term preference)
 ```
 
 ### Update Priority
@@ -142,6 +153,14 @@ Handling:
   1. Defer to actual code behavior
   2. Update docs to match code
   3. Mark update timestamp
+```
+
+**When task requirements conflict with preferences:**
+```yaml
+Priority:
+  1. Explicit requirement in the current task
+  2. Long-term preference in user/preferences.md
+  3. Default rules
 ```
 
 ---
