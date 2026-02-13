@@ -40,6 +40,15 @@ workflow:
   # When false, always ask user for clarification
   auto_decide: false
 
+  # workflow-learning proactive capture policy:
+  # - always: Capture all development tasks with full logs
+  # - by_requirement: simple=off, medium=summary, complex=full
+  # - manual: Capture only after explicit "start recording this task"
+  # - off: Do not create new capture logs automatically
+  # Note: replay/review/why intent recognition is always enabled.
+  learning:
+    auto_capture: by_requirement
+
 # ============================================================
 # PLAN PACKAGE CONFIGURATION (方案包配置)
 # ============================================================

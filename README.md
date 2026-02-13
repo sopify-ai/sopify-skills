@@ -32,8 +32,9 @@
 - **自适应工作流** - 简单任务秒级完成，复杂任务完整规划
 - **简洁输出** - 核心信息一屏可见，详情在文件里
 - **配置驱动** - 通过 `sopify.config.yaml` 定制所有行为
-- **动态品牌** - 自动获取仓库名作为输出标识
+- **动态品牌** - 默认由项目名生成 `{repo}-ai` 作为输出标识
 - **方案包分级** - light/standard/full 三级，按需生成
+- **工作流学习** - 支持实现链路回放、复盘与逐步讲解
 - **跨平台支持** - Claude Code 和 Codex CLI 双平台
 
 ---
@@ -90,6 +91,9 @@ cp -r Codex/Skills/EN/* ~/.codex/
 
 # 4. 只规划不执行
 "~go plan 重构数据库层"
+
+# 5. 回放/复盘最近一次实现
+"回放最近一次实现，重点讲为什么这么做"
 ```
 
 ---
@@ -111,7 +115,7 @@ Windows 环境：请手动复制 `examples/sopify.config.yaml` 到项目根并�
 在项目根目录创建（或使用示例复制生成的）`sopify.config.yaml`：
 
 ```yaml
-# 品牌名: auto(自动获取) 或 自定义
+# 品牌名: auto(默认由项目名生成 {repo}-ai) 或 自定义
 brand: auto
 
 # 语言: zh-CN / en-US
@@ -128,6 +132,8 @@ workflow:
   mode: adaptive        # strict / adaptive / minimal
   require_score: 7      # 需求评分阈值
   auto_decide: false    # AI 是否自动决策
+  learning:
+    auto_capture: by_requirement  # always / by_requirement / manual / off
 
 # 方案包配置
 plan:
@@ -136,6 +142,7 @@ plan:
 ```
 
 说明：`title_color` 仅作用于输出标题行的轻量着色；终端不支持颜色时自动回退为纯文本。
+说明：`workflow.learning.auto_capture` 仅控制是否主动记录；“回放/复盘/为什么这么做”意图识别始终开启。
 
 ### 工作流模式
 
@@ -144,6 +151,17 @@ plan:
 | `strict` | 强制 3 阶段流程 | 需要完整文档的正式项目 |
 | `adaptive` | 根据复杂度自动选择 (默认) | 日常开发 |
 | `minimal` | 跳过规划，直接执行 | 快速原型、紧急修复 |
+
+### workflow-learning 主动记录策略
+
+| 配置值 | 行为 |
+|-----|------|
+| `always` | 所有开发任务主动记录（full） |
+| `by_requirement` | 按复杂度主动记录：simple=off，medium=summary，complex=full |
+| `manual` | 仅在明确提出“开始记录这次任务”后记录 |
+| `off` | 不主动新建记录；可继续回放已有 session |
+
+补充：无论上述策略如何，回放/复盘/原因解释的意图识别始终可用。
 
 ### 方案包级别
 
@@ -255,7 +273,7 @@ Next: ~go exec 执行 或 回复修改意见
 
 | 特性 | HelloAGENTS | Sopify (Sop AI) Skills |
 |-----|-------------|--------------|
-| 品牌名 | 固定 "HelloAGENTS" | 动态 "{repo}-ai" |
+| 品牌名 | 固定 "HelloAGENTS" | 由项目名生成 "{repo}-ai" |
 | 输出风格 | 多 emoji | 简洁文本 |
 | 工作流 | 固定 3 阶段 | 自适应 |
 | 方案包 | 固定 3 文件 | 分级 (light/standard/full) |

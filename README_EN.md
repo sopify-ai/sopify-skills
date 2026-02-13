@@ -32,8 +32,9 @@
 - **Adaptive Workflow** - Simple tasks complete in seconds, complex tasks get full planning
 - **Concise Output** - Core info visible in one screen, details in files
 - **Configuration Driven** - Customize all behavior via `sopify.config.yaml`
-- **Dynamic Branding** - Auto-detect repo name as output identifier
+- **Dynamic Branding** - By default, derive `{repo}-ai` from the project name as the output identifier
 - **Tiered Plan Packages** - light/standard/full levels, generated as needed
+- **Workflow Learning** - Replay implementation traces with retrospective and step-by-step explanation
 - **Cross-Platform** - Supports both Claude Code and Codex CLI
 
 ---
@@ -90,6 +91,9 @@ Show skills list
 
 # 4. Plan only, no execution
 "~go plan Refactor the database layer"
+
+# 5. Replay / retrospective for the latest implementation
+"Replay the latest implementation and explain why this approach was chosen"
 ```
 
 ---
@@ -111,7 +115,7 @@ On Windows, copy `examples/sopify.config.yaml` into your project root and rename
 Create (or use the copied) `sopify.config.yaml` in your project root:
 
 ```yaml
-# Brand name: auto(auto-detect) or custom
+# Brand name: auto(derive {repo}-ai from project name) or custom
 brand: auto
 
 # Language: zh-CN / en-US
@@ -128,6 +132,8 @@ workflow:
   mode: adaptive        # strict / adaptive / minimal
   require_score: 7      # Requirement score threshold
   auto_decide: false    # AI auto-decision
+  learning:
+    auto_capture: by_requirement  # always / by_requirement / manual / off
 
 # Plan package configuration
 plan:
@@ -136,6 +142,7 @@ plan:
 ```
 
 Note: `title_color` only applies lightweight styling to the output title line; if color is unsupported, output falls back to plain text automatically.
+Note: `workflow.learning.auto_capture` controls proactive recording only; replay/review/why intent recognition is always enabled.
 
 ### Workflow Modes
 
@@ -144,6 +151,17 @@ Note: `title_color` only applies lightweight styling to the output title line; i
 | `strict` | Enforce 3-phase workflow | Formal projects requiring full documentation |
 | `adaptive` | Auto-select based on complexity (default) | Daily development |
 | `minimal` | Skip planning, execute directly | Quick prototypes, urgent fixes |
+
+### workflow-learning Proactive Capture Policy
+
+| Config Value | Behavior |
+|------|----------|
+| `always` | Proactively capture all development tasks (full) |
+| `by_requirement` | Capture by complexity: simple=off, medium=summary, complex=full |
+| `manual` | Capture only after explicit request such as "start recording this task" |
+| `off` | Do not create new logs proactively; replay existing sessions remains available |
+
+Note: intent recognition for replay/review/why-explanations remains available in all modes.
 
 ### Plan Package Levels
 
@@ -255,7 +273,7 @@ Next: ~go exec to execute or reply with feedback
 
 | Feature | HelloAGENTS | Sopify (Sop AI) Skills |
 |---------|-------------|--------------|
-| Brand name | Fixed "HelloAGENTS" | Dynamic "{repo}-ai" |
+| Brand name | Fixed "HelloAGENTS" | Derived "{repo}-ai" from project name |
 | Output style | Many emojis | Clean text |
 | Workflow | Fixed 3-phase | Adaptive |
 | Plan package | Fixed 3 files | Tiered (light/standard/full) |

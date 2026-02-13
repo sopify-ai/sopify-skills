@@ -26,11 +26,11 @@
 3. Merge defaults and set runtime variables
 ```
 
-**Brand Name Resolution (when brand: auto):**
+**Brand Name Resolution (when brand: auto, derived from project name by default):**
 ```
-Priority: git remote repo name > package.json name > directory name > "project"
-Format: {name}-ai
-Example: my-app → my-app-ai
+Project-name priority: git remote repo name > package.json name > directory name > "project"
+Brand format: {project_name}-ai
+Example: my-app (project name) → my-app-ai (brand)
 ```
 
 **Default Configuration:**
@@ -41,12 +41,14 @@ output_style: minimal
 title_color: green
 workflow.mode: adaptive
 workflow.require_score: 7
+workflow.learning.auto_capture: by_requirement
 plan.level: auto
 plan.directory: .sopify-skills
 ```
 
 Note: Changing `plan.directory` only affects newly generated knowledge base/plan files. Existing data in the old directory will not be migrated automatically.
 Note: `title_color` applies only to lightweight styling of the output title line. If color is unsupported, automatically fallback to plain text.
+Note: `workflow.learning.auto_capture` controls proactive logging only. Replay/review/why intent recognition remains always enabled.
 
 ### C2 | Output Format
 
@@ -118,6 +120,20 @@ Complex Task (full 3 phases):
 | `~go` | Auto-detect and execute full workflow |
 | `~go plan` | Plan only, no execution |
 | `~go exec` | Execute existing plan |
+
+**workflow-learning proactive capture policy:**
+```yaml
+workflow:
+  learning:
+    auto_capture: by_requirement # always | by_requirement | manual | off
+```
+
+| Value | Behavior |
+|------|----------|
+| `always` | Proactively capture all development tasks (full) |
+| `by_requirement` | Capture by complexity: simple=off, medium=summary, complex=full |
+| `manual` | Capture only after explicit request like "start recording this task" |
+| `off` | Do not proactively create new logs; replay/review intent and replay from existing sessions still work |
 
 ---
 
@@ -245,7 +261,7 @@ Semantic analysis routing:
 | Route | Condition | Behavior |
 |-------|-----------|----------|
 | Q&A | Pure question, no code changes | Direct answer |
-| Workflow Learning | Mentions replay/review/why this choice | Call workflow-learning for trace capture and explanation |
+| Workflow Learning | Mentions replay/review/why this choice (intent recognition is always enabled) | Call workflow-learning for trace capture and explanation |
 | Quick Fix | ≤2 files, clear modification | Direct execution |
 | Light Iteration | 3-5 files, clear requirements | Light plan + execution |
 | Full Development | >5 files or architectural changes | Full 3-phase workflow |
@@ -354,7 +370,7 @@ Next: Please verify the functionality
 | `develop` | Enter development | Code execution, KB sync |
 | `kb` | Knowledge base operations | Init, update strategies |
 | `templates` | Create documents | All template definitions |
-| `workflow-learning` | User asks replay/review/why | Full trace logging, replay, step-by-step explanation |
+| `workflow-learning` | User asks replay/review/why, or `auto_capture` proactively applies | Full trace logging, replay, step-by-step explanation |
 
 **Loading:** On-demand, loaded when entering corresponding phase.
 

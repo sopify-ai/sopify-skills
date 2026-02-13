@@ -26,11 +26,11 @@
 3. 合并默认配置并设置运行时变量
 ```
 
-**品牌名获取 (当 brand: auto)：**
+**品牌名获取 (当 brand: auto，默认由项目名生成)：**
 ```
-优先级: git remote 仓库名 > package.json name > 目录名 > "project"
-格式: {name}-ai
-示例: my-app → my-app-ai
+项目名优先级: git remote 仓库名 > package.json name > 目录名 > "project"
+品牌格式: {project_name}-ai
+示例: my-app (项目名) → my-app-ai (品牌名)
 ```
 
 **默认配置：**
@@ -41,12 +41,14 @@ output_style: minimal
 title_color: green
 workflow.mode: adaptive
 workflow.require_score: 7
+workflow.learning.auto_capture: by_requirement
 plan.level: auto
 plan.directory: .sopify-skills
 ```
 
 说明：修改 `plan.directory` 只影响后续新生成的知识库/方案文件目录，默认不会自动迁移旧目录内容。
 说明：`title_color` 仅作用于输出标题行的轻量着色；若终端不支持颜色则自动回退为纯文本。
+说明：`workflow.learning.auto_capture` 仅控制是否主动记录；“回放/复盘/为什么这么做”意图识别始终开启。
 
 ### C2 | 输出格式
 
@@ -118,6 +120,20 @@ Next: {下一步提示}
 | `~go` | 自动判断并执行全流程 |
 | `~go plan` | 只规划不执行 |
 | `~go exec` | 执行已有方案 |
+
+**workflow-learning 主动记录策略：**
+```yaml
+workflow:
+  learning:
+    auto_capture: by_requirement # always | by_requirement | manual | off
+```
+
+| 值 | 行为 |
+|-----|------|
+| `always` | 所有开发任务主动记录（full） |
+| `by_requirement` | 按复杂度主动记录：simple=off，medium=summary，complex=full |
+| `manual` | 仅在用户明确要求“开始记录这次任务”后记录 |
+| `off` | 不主动新建记录；但回放/复盘意图识别与已有记录回放仍可用 |
 
 ---
 
@@ -245,7 +261,7 @@ progressive: 按需创建文件 (默认)
 | 路由 | 条件 | 行为 |
 |-----|------|-----|
 | 咨询问答 | 纯问题，无代码变更 | 直接回答 |
-| 复盘学习 | 提到回放/复盘/为什么这么做 | 调用 workflow-learning，生成记录与讲解 |
+| 复盘学习 | 提到回放/复盘/为什么这么做（意图识别始终开启） | 调用 workflow-learning，生成记录与讲解 |
 | 快速修复 | ≤2 文件，明确修改 | 直接执行 |
 | 轻量迭代 | 3-5 文件，清晰需求 | light 方案 + 执行 |
 | 完整开发 | >5 文件或架构变更 | 3 阶段完整流程 |
@@ -354,7 +370,7 @@ Next: 请验证功能
 | `develop` | 进入开发实施 | 代码执行、KB同步 |
 | `kb` | 知识库操作 | 初始化、更新策略 |
 | `templates` | 创建文档 | 所有模板定义 |
-| `workflow-learning` | 用户要求回放/复盘/原因讲解 | 完整记录、回放、逐步讲解 |
+| `workflow-learning` | 用户要求回放/复盘/原因讲解，或 `auto_capture` 命中主动记录策略 | 完整记录、回放、逐步讲解 |
 
 **读取方式：** 按需读取，进入对应阶段时加载。
 

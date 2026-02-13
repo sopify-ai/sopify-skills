@@ -15,13 +15,47 @@ description: Workflow learning sub-skill for full execution-trace capture plus r
 
 ## Trigger Conditions
 
-Use this skill when user intent includes:
+This skill has two trigger sources:
+
+1. **Intent trigger (always enabled):** activate when user intent includes replay/review/why questions.
+2. **Proactive capture trigger (config controlled):** activate automatically based on `workflow.learning.auto_capture`.
+
+Intent trigger examples:
 
 - Replay: `replay`, `play back`, `show the process`
 - Retrospective: `review`, `retrospective`, `summarize this run`
 - Decision explanation: `why this choice`, `how did you think about this step`
 
 Default usage is after implementation completes. If asked mid-task, generate a partial replay for completed steps.
+
+---
+
+## Proactive Capture Policy (auto_capture)
+
+Config path:
+
+```yaml
+workflow:
+  learning:
+    auto_capture: by_requirement # always | by_requirement | manual | off
+```
+
+Policy definitions:
+
+| Value | Behavior |
+|------|----------|
+| `always` | Proactively capture all development tasks with full-granularity logging |
+| `by_requirement` | Capture by complexity: simple=off, medium=summary, complex=full |
+| `manual` | Capture only after explicit user request such as "start recording this task" |
+| `off` | Do not create new logs; intent-triggered replay still works with existing sessions |
+
+`by_requirement` granularity:
+
+- simple: no proactive capture
+- medium: write summary-level records at task completion (minimal event set)
+- complex: full phase-level capture (analysis/design/develop/qa)
+
+Important: `auto_capture` controls proactive recording only. It does not disable replay/review/why intent recognition.
 
 ---
 

@@ -15,13 +15,47 @@ description: 工作流学习子技能；用于完整记录任务执行链路并�
 
 ## 触发条件
 
-当用户表达以下意图时调用本技能：
+本技能有两类触发来源：
+
+1. **意图触发（始终开启）**：当用户表达以下意图时调用本技能
+2. **主动记录触发（受配置控制）**：由 `workflow.learning.auto_capture` 决定是否在开发流程中自动记录
+
+意图触发关键词示例：
 
 - 回放：`回放`、`回看`、`重放`、`看过程`
 - 复盘：`复盘`、`总结这次实现`
 - 原因解释：`为什么这么做`、`这步怎么想的`、`为什么选这个方案`
 
 默认在“需求已实现完成后”使用；如用户中途要求，也可对当前已发生步骤进行部分回放。
+
+---
+
+## 主动记录策略（auto_capture）
+
+配置位置：
+
+```yaml
+workflow:
+  learning:
+    auto_capture: by_requirement # always | by_requirement | manual | off
+```
+
+策略说明：
+
+| 值 | 行为 |
+|----|------|
+| `always` | 所有开发任务主动记录，按 full 粒度持续写入事件 |
+| `by_requirement` | 按复杂度主动记录：simple=off，medium=summary，complex=full |
+| `manual` | 仅在用户明确要求“开始记录这次任务”后记录 |
+| `off` | 不新建记录；但意图触发仍可回放已有 session |
+
+`by_requirement` 粒度约定：
+
+- simple: 不主动记录
+- medium: 任务结束时写入 summary（最小事件集）
+- complex: 全阶段 full 记录（analysis/design/develop/qa）
+
+注意：`auto_capture` 只影响“是否主动记录”，不影响“回放/复盘/为什么这么做”意图识别能力。
 
 ---
 

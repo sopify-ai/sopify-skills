@@ -23,11 +23,15 @@ This changelog is maintained manually (not auto-generated).
   - `.sopify-skills/user/preferences.md`
   - `.sopify-skills/user/feedback.jsonl`
 - Conservative learning rules (only persist explicit long-term preferences).
+- New workflow-learning proactive capture config:
+  - `workflow.learning.auto_capture` with `always | by_requirement | manual | off`
 
 ### Changed
 
 - Corrected Claude Code CN install command in `README.md`.
 - Clarified source-of-truth workflow: edit `Codex/Skills/{CN,EN}` then sync to `Claude/Skills/{CN,EN}`.
+- Clarified branding semantics: `brand: auto` derives brand as `{repo}-ai` from project name.
+- Clarified workflow-learning behavior: replay/review/why intent recognition is always enabled; `auto_capture` only controls proactive recording.
 
 ## [2026-01-15.1] - 2026-01-15
 
