@@ -74,7 +74,7 @@ cp -r Codex/Skills/EN/* ~/.codex/
 显示技能列表
 ```
 
-**预期输出：** Agent 列出 5 个技能 (analyze, design, develop, kb, templates)
+**预期输出：** Agent 列出 6 个技能 (analyze, design, develop, kb, templates, workflow-learning)
 
 ### 首次使用
 
@@ -162,6 +162,21 @@ plan:
 | `~go` | 全流程自动执行 |
 | `~go plan` | 只规划不执行 |
 | `~go exec` | 执行已有方案 |
+
+---
+
+## 子 Skills（扩展能力）
+
+`skills/sopify` 下包含核心技能与子技能。总 README 仅提供导航，详细说明与使用指南请查看子技能文档。
+
+| 子 Skill | 用途 | 文档 |
+|---------|------|------|
+| `workflow-learning` | 任务链路完整记录、回放与逐步讲解 | [中文说明](./Codex/Skills/CN/skills/sopify/workflow-learning/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/workflow-learning/SKILL.md) |
+
+子技能独立变更记录（与仓库总变更分离）：
+
+- [workflow-learning Changelog (CN)](./Codex/Skills/CN/skills/sopify/workflow-learning/CHANGELOG.md)
+- [workflow-learning Changelog (EN)](./Codex/Skills/EN/skills/sopify/workflow-learning/CHANGELOG.md)
 
 ---
 
@@ -258,7 +273,7 @@ sopify-skills/
 │   └── Skills/
 │       ├── CN/                 # 中文版
 │       │   ├── CLAUDE.md       # 主配置文件
-│       │   └── skills/sopify/  # 技能模块
+│       │   └── skills/sopify/  # 核心技能 + 子 Skills
 │       └── EN/                 # 英文版
 ├── Codex/
 │   └── Skills/                 # Codex CLI 版本

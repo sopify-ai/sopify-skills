@@ -234,6 +234,7 @@ Check command prefix (~go, ~go plan, ~go exec)
     ↓
 Semantic analysis routing:
 ├─ Q&A → Direct answer
+├─ Replay/Review/Why this choice → Workflow learning
 ├─ Simple change → Quick fix
 ├─ Medium task → Light iteration
 └─ Complex task → Full development workflow
@@ -244,6 +245,7 @@ Semantic analysis routing:
 | Route | Condition | Behavior |
 |-------|-----------|----------|
 | Q&A | Pure question, no code changes | Direct answer |
+| Workflow Learning | Mentions replay/review/why this choice | Call workflow-learning for trace capture and explanation |
 | Quick Fix | ≤2 files, clear modification | Direct execution |
 | Light Iteration | 3-5 files, clear requirements | Light plan + execution |
 | Full Development | >5 files or architectural changes | Full 3-phase workflow |
@@ -352,6 +354,7 @@ Next: Please verify the functionality
 | `develop` | Enter development | Code execution, KB sync |
 | `kb` | Knowledge base operations | Init, update strategies |
 | `templates` | Create documents | All template definitions |
+| `workflow-learning` | User asks replay/review/why | Full trace logging, replay, step-by-step explanation |
 
 **Loading:** On-demand, loaded when entering corresponding phase.
 

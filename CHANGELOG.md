@@ -11,6 +11,10 @@ This changelog is maintained manually (not auto-generated).
 - Sync scripts for keeping Codex/Claude skill bundles aligned:
   - `scripts/sync-skills.sh`
   - `scripts/check-skills-sync.sh`
+- New sub-skill `workflow-learning` (CN/EN) for full local trace capture, replay, and step-by-step explanation.
+- Separate sub-skill changelog files for `workflow-learning`:
+  - `Codex/Skills/CN/skills/sopify/workflow-learning/CHANGELOG.md`
+  - `Codex/Skills/EN/skills/sopify/workflow-learning/CHANGELOG.md`
 - Sync/check usage guidance in `README.md`, `README_EN.md`, and `CONTRIBUTING.md`.
 - Lightweight title color behavior clarification:
   - `title_color` applies to the title line only

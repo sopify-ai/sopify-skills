@@ -74,7 +74,7 @@ Restart your terminal and type:
 Show skills list
 ```
 
-**Expected:** Agent lists 5 skills (analyze, design, develop, kb, templates)
+**Expected:** Agent lists 6 skills (analyze, design, develop, kb, templates, workflow-learning)
 
 ### First Use
 
@@ -162,6 +162,21 @@ Note: `title_color` only applies lightweight styling to the output title line; i
 | `~go` | Full workflow auto-execution |
 | `~go plan` | Plan only, no execution |
 | `~go exec` | Execute existing plan |
+
+---
+
+## Sub-skills (Extensions)
+
+`skills/sopify` contains both core skills and sub-skills. This root README stays minimal; see each sub-skill doc for detailed usage.
+
+| Sub-skill | Purpose | Docs |
+|-----------|---------|------|
+| `workflow-learning` | Full trace capture, replay, and step-by-step explanation | [中文说明](./Codex/Skills/CN/skills/sopify/workflow-learning/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/workflow-learning/SKILL.md) |
+
+Sub-skill change history is tracked separately from the repository-level changelog:
+
+- [workflow-learning Changelog (CN)](./Codex/Skills/CN/skills/sopify/workflow-learning/CHANGELOG.md)
+- [workflow-learning Changelog (EN)](./Codex/Skills/EN/skills/sopify/workflow-learning/CHANGELOG.md)
 
 ---
 
@@ -258,7 +273,7 @@ sopify-skills/
 │   └── Skills/
 │       ├── CN/                 # Chinese version
 │       │   ├── CLAUDE.md       # Main config file
-│       │   └── skills/sopify/  # Skill modules
+│       │   └── skills/sopify/  # Core skills + sub-skills
 │       └── EN/                 # English version
 ├── Codex/
 │   └── Skills/                 # Codex CLI version
