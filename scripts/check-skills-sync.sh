@@ -43,7 +43,7 @@ check_lang() {
     status=1
   fi
 
-  if ! diff -ru "$codex_dir/skills/sopify" "$claude_dir/skills/sopify" >"$diff_file"; then
+  if ! diff -ru -x .DS_Store -x Thumbs.db "$codex_dir/skills/sopify" "$claude_dir/skills/sopify" >"$diff_file"; then
     echo "[$lang] Skill directory mismatch: Codex/Skills/$lang/skills/sopify != Claude/Skills/$lang/skills/sopify"
     head -n 60 "$diff_file"
     status=1

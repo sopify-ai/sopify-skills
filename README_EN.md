@@ -305,9 +305,14 @@ bash scripts/sync-skills.sh
 
 # 2) Verify all four bundles are aligned
 bash scripts/check-skills-sync.sh
+
+# 3) Verify version consistency (README badge / SOPIFY_VERSION / CHANGELOG)
+bash scripts/check-version-consistency.sh
 ```
 
-Before committing skill/rule updates, always run `sync -> check`.
+These scripts ignore Finder/Explorer noise files (`.DS_Store`, `Thumbs.db`) to avoid false drift reports.
+Before committing skill/rule updates, always run `sync -> check-skills-sync -> check-version-consistency`.
+CI (`.github/workflows/ci.yml`) runs the same gate on PR/Push, and uses `git diff --exit-code` to fail drift that requires sync.
 
 ---
 
@@ -445,8 +450,9 @@ After editing rule files under `Codex/Skills/{CN,EN}`, run:
 ```bash
 bash scripts/sync-skills.sh
 bash scripts/check-skills-sync.sh
+bash scripts/check-version-consistency.sh
 ```
-If check fails, rerun `sync` before committing.
+If any check fails, fix the mismatch before committing.
 
 ---
 

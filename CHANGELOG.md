@@ -13,6 +13,7 @@ This changelog is maintained manually (not auto-generated).
   - Command: `~compare <question>`
   - Natural-language prefix: `对比分析：<question>`
 - Multi-model MVP config block in `examples/sopify.config.yaml` with `candidates`, `timeout_sec`, and `max_parallel`.
+- New GitHub Actions workflow `.github/workflows/ci.yml` to gate PR/Push with sync and version checks.
 
 ### Changed
 
@@ -39,6 +40,11 @@ This changelog is maintained manually (not auto-generated).
   - Empty-pack safeguard (`context_pack empty` -> single-model fallback)
 - Wired `~compare` entry to runtime module `scripts/model_compare_runtime.py` (`run_model_compare_runtime`) and converged compare docs to this runtime as SSOT.
 - Unified fallback wording across CN/EN using normalized reason-code format (e.g., `MISSING_API_KEY`, `INSUFFICIENT_USABLE_MODELS`) and reduced duplicated execution-detail text in docs.
+- Updated sync scripts to ignore Finder/Explorer noise files (`.DS_Store`, `Thumbs.db`) to reduce false drift reports.
+- Updated maintainer docs (`README.md`, `README_EN.md`, `CONTRIBUTING.md`) to document the full gate chain:
+  - `sync-skills.sh`
+  - `check-skills-sync.sh`
+  - `check-version-consistency.sh`
 
 ## [2026-02-13] - 2026-02-13
 

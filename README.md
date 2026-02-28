@@ -305,9 +305,14 @@ bash scripts/sync-skills.sh
 
 # 2) 校验四套文件是否一致
 bash scripts/check-skills-sync.sh
+
+# 3) 校验版本一致性（README 徽章 / SOPIFY_VERSION / CHANGELOG）
+bash scripts/check-version-consistency.sh
 ```
 
-建议在提交技能规则改动前固定执行一次 `sync -> check`。
+脚本默认忽略 Finder/Explorer 噪音文件（`.DS_Store`、`Thumbs.db`），避免误报。
+建议在提交技能规则改动前固定执行一次 `sync -> check-skills-sync -> check-version-consistency`。
+CI（`.github/workflows/ci.yml`）会在 PR/Push 执行同样门禁，并用 `git diff --exit-code` 拦截“先同步才能通过”的漂移改动。
 
 ---
 
@@ -445,8 +450,9 @@ workflow:
 ```bash
 bash scripts/sync-skills.sh
 bash scripts/check-skills-sync.sh
+bash scripts/check-version-consistency.sh
 ```
-若校验失败，先重新执行 `sync` 再提交。
+若校验失败，先修复差异再提交。
 
 ---
 

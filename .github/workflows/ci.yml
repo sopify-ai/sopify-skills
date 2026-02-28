@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  sync-and-version-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Sync skills
+        run: bash scripts/sync-skills.sh
+
+      - name: Ensure sync produced no changes
+        run: git diff --exit-code
+
+      - name: Check skills sync
+        run: bash scripts/check-skills-sync.sh
+
+      - name: Check version consistency
+        run: bash scripts/check-version-consistency.sh

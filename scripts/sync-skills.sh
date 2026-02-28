@@ -54,7 +54,7 @@ sync_lang() {
   fi
 
   render_claude_header "$codex_dir/AGENTS.md" "$claude_dir/CLAUDE.md"
-  rsync -a --delete "$codex_dir/skills/sopify/" "$claude_dir/skills/sopify/"
+  rsync -a --delete --exclude .DS_Store --exclude Thumbs.db "$codex_dir/skills/sopify/" "$claude_dir/skills/sopify/"
 }
 
 sync_lang "CN"

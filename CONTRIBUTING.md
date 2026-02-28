@@ -8,8 +8,8 @@ Thanks for your interest in contributing!
 - Keep changes focused and easy to review (one feature/fix per PR when possible).
 - Prefer updating both `README.md` and `README_EN.md` when user-facing behavior changes.
 - Update `CHANGELOG.md` manually for user-facing/rule behavior changes.
-- Use `Codex/Skills/{CN,EN}` as the source of truth. After edits, run `bash scripts/sync-skills.sh` then `bash scripts/check-skills-sync.sh`.
-- Include the sync/check results in your PR description if you changed skills/rules.
+- Use `Codex/Skills/{CN,EN}` as the source of truth. After edits, run `bash scripts/sync-skills.sh`, `bash scripts/check-skills-sync.sh`, and `bash scripts/check-version-consistency.sh`.
+- CI runs the same checks plus `git diff --exit-code`; include local results in your PR description if you changed skills/rules.
 
 ## License note (informal)
 
