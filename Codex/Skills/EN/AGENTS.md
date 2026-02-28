@@ -44,11 +44,21 @@ workflow.require_score: 7
 workflow.learning.auto_capture: by_requirement
 plan.level: auto
 plan.directory: .sopify-skills
+multi_model.enabled: false
+multi_model.trigger: manual
+multi_model.timeout_sec: 25
+multi_model.max_parallel: 3
+multi_model.include_default_model: true
+multi_model.context_bridge: true
 ```
 
 Note: Changing `plan.directory` only affects newly generated knowledge base/plan files. Existing data in the old directory will not be migrated automatically.
 Note: `title_color` applies only to lightweight styling of the output title line. If color is unsupported, automatically fallback to plain text.
 Note: `workflow.learning.auto_capture` controls proactive logging only. Replay/review/why intent recognition remains always enabled.
+Note: `multi_model.enabled` is the feature-level gate, while `multi_model.candidates[*].enabled` is the per-candidate participation gate; both apply together.
+Note: `multi_model.include_default_model` defaults to `true` (works even when omitted) and includes the current session default model as a candidate.
+Note: `multi_model.context_bridge` defaults to `true`; set it to `false` only as an emergency bypass (question-only input). Execution-level details and budgets are centralized in `scripts/model_compare_runtime.py`.
+Note: parallel compare requires at least 2 usable models; below that, fallback to single-model with normalized reason codes.
 
 ### C2 | Output Format
 
@@ -77,7 +87,8 @@ Next: {Next step hint}
 **Phase Names:**
 - Requirements Analysis, Solution Design, Development
 - Quick Fix, Light Iteration
-- Command Complete (command-prefixed flows only, e.g., `~go/~go plan/~go exec`)
+- Model Compare
+- Command Complete (command-prefixed flows only, e.g., `~go/~go plan/~go exec/~compare`)
 - Q&A (non-command questions/clarifications)
 
 **Output Principles:**
@@ -120,6 +131,7 @@ Complex Task (full 3 phases):
 | `~go` | Auto-detect and execute full workflow |
 | `~go plan` | Plan only, no execution |
 | `~go exec` | Execute existing plan |
+| `~compare` | Multi-model parallel comparison (includes session default model by default; falls back with reasons when usable model count is below 2) |
 
 **workflow-learning proactive capture policy:**
 ```yaml
@@ -241,15 +253,17 @@ progressive: Create files as needed (default)
 ```
 User Input
     ↓
-Check command prefix (~go, ~go plan, ~go exec)
+Check command prefix (~go, ~go plan, ~go exec, ~compare)
     ↓
 ├─ ~go exec → Execute existing plan
 ├─ ~go plan → Plan mode (Analysis → Design)
 ├─ ~go → Full workflow mode
+├─ ~compare → Model compare (wired to scripts/model_compare_runtime.py runtime)
 └─ No prefix → Semantic analysis
     ↓
 Semantic analysis routing:
 ├─ Q&A → Direct answer
+├─ Compare analysis (starts with "对比分析：") → Model compare
 ├─ Replay/Review/Why this choice → Workflow learning
 ├─ Simple change → Quick fix
 ├─ Medium task → Light iteration
@@ -261,6 +275,7 @@ Semantic analysis routing:
 | Route | Condition | Behavior |
 |-------|-----------|----------|
 | Q&A | Pure question, no code changes | Direct answer |
+| Model Compare | `~compare <question>` or `对比分析：<question>` | Call model-compare, wired to `scripts/model_compare_runtime.py::run_model_compare_runtime`; include session default model by default, run parallel compare only when usable model count reaches 2, otherwise fallback with normalized reason codes |
 | Workflow Learning | Mentions replay/review/why this choice (intent recognition is always enabled) | Call workflow-learning for trace capture and explanation |
 | Quick Fix | ≤2 files, clear modification | Direct execution |
 | Light Iteration | 3-5 files, clear requirements | Light plan + execution |
@@ -370,6 +385,7 @@ Next: Please verify the functionality
 | `develop` | Enter development | Code execution, KB sync |
 | `kb` | Knowledge base operations | Init, update strategies |
 | `templates` | Create documents | All template definitions |
+| `model-compare` | User triggers `~compare` or `对比分析：` | Calls `scripts/model_compare_runtime.py::run_model_compare_runtime`; keeps two-layer switches + session-default inclusion; falls back below 2 usable models with normalized reason codes |
 | `workflow-learning` | User asks replay/review/why, or `auto_capture` proactively applies | Full trace logging, replay, step-by-step explanation |
 
 **Loading:** On-demand, loaded when entering corresponding phase.
@@ -383,6 +399,7 @@ Next: Please verify the functionality
 ~go              # Full workflow auto-execution
 ~go plan         # Plan only, no execution
 ~go exec         # Execute existing plan
+~compare         # Compare one prompt across models (fallbacks below 2 usable models with explicit reasons)
 ```
 
 **Configuration File:** `sopify.config.yaml` (project root)

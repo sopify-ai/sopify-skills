@@ -75,7 +75,7 @@ cp -r Codex/Skills/EN/* ~/.codex/
 显示技能列表
 ```
 
-**预期输出：** Agent 列出 6 个技能 (analyze, design, develop, kb, templates, workflow-learning)
+**预期输出：** Agent 列出 7 个技能 (analyze, design, develop, kb, templates, model-compare, workflow-learning)
 
 ### 首次使用
 
@@ -94,6 +94,10 @@ cp -r Codex/Skills/EN/* ~/.codex/
 
 # 5. 回放/复盘最近一次实现
 "回放最近一次实现，重点讲为什么这么做"
+
+# 6. 多模型并发对比（人工选择）
+"~compare 给这个重构方案做对比分析"
+"对比分析：给这个重构方案做对比分析"
 ```
 
 ---
@@ -139,10 +143,38 @@ workflow:
 plan:
   level: auto           # auto / light / standard / full
   directory: .sopify-skills    # 知识库目录
+
+# 多模型对比（MVP）配置
+multi_model:
+  enabled: true
+  trigger: manual       # 仅在 ~compare 或“对比分析：”触发
+  timeout_sec: 25
+  max_parallel: 3
+  include_default_model: true  # 可选；默认 true（未配置也会生效）
+  context_bridge: true  # 可选；默认 true（扩展模型默认走上下文桥接，false 为应急旁路）
+  candidates:
+    - id: glm
+      enabled: true
+      provider: openai_compatible
+      base_url: https://open.bigmodel.cn/api/paas/v4
+      model: glm-4.7
+      api_key_env: GLM_API_KEY
+    - id: qwen
+      enabled: true
+      provider: openai_compatible
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model: qwen-plus
+      api_key_env: DASHSCOPE_API_KEY
 ```
 
 说明：`title_color` 仅作用于输出标题行的轻量着色；终端不支持颜色时自动回退为纯文本。
 说明：`workflow.learning.auto_capture` 仅控制是否主动记录；“回放/复盘/为什么这么做”意图识别始终开启。
+说明：`multi_model.enabled` 是功能总开关，`multi_model.candidates[*].enabled` 是候选参与开关；两者语义不同且同时生效。
+说明：`multi_model.include_default_model` 默认是 `true`（即使不写配置也会纳入当前会话默认模型）。
+说明：`multi_model.context_bridge` 默认是 `true`；`false` 为应急旁路（仅发送问题文本）。执行细节统一以 `scripts/model_compare_runtime.py` 为准。
+说明：进入并发对比需至少 2 个可用模型；不足时会降级单模型并输出原因明细。
+说明：建议降级原因使用统一 reason code（如 `MISSING_API_KEY`、`INSUFFICIENT_USABLE_MODELS`）。
+说明：`multi_model.candidates[*].api_key_env` 只读取环境变量，不建议在配置文件里写明文 key。
 
 ### 工作流模式
 
@@ -180,6 +212,70 @@ plan:
 | `~go` | 全流程自动执行 |
 | `~go plan` | 只规划不执行 |
 | `~go exec` | 执行已有方案 |
+| `~compare` | 按配置并发对比多个模型；默认纳入当前会话模型，可用模型数不足 2 时单模型降级并说明原因 |
+
+---
+
+## 多模型对比（MVP）
+
+**触发条件（仅两种）：**
+- `~compare <问题>`
+- `对比分析：<问题>`
+
+**环境变量（仅此方式）：**
+
+```bash
+# 当前终端会话生效
+export GLM_API_KEY="your_glm_key"
+export DASHSCOPE_API_KEY="your_qwen_key"
+```
+
+```bash
+# zsh 永久生效（追加到 ~/.zshrc）
+echo 'export GLM_API_KEY="your_glm_key"' >> ~/.zshrc
+echo 'export DASHSCOPE_API_KEY="your_qwen_key"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**行为说明：**
+- `multi_model.enabled` 控制“是否启用对比功能”；`candidates[*].enabled` 控制“候选是否参与”
+- 默认会纳入“当前会话默认模型”（`include_default_model` 默认 `true`，未配置也生效）
+- 默认启用上下文桥接（`context_bridge=true`）：存在扩展模型候选时，会将“问题 + context_pack”统一发送；`false` 时仅发送问题文本（应急旁路）
+- `~compare` 执行实现已收口到 `scripts/model_compare_runtime.py`（入口调用 `run_model_compare_runtime`）
+- 执行层细节（抽取/脱敏/截断链路、预算、空包保护）统一以 `scripts/model_compare_runtime.py` 与子技能 `model-compare` 文档为准
+- 可用模型数达到 2 才进入并发对比（该阈值为内置规则，无需配置）
+- 降级原因建议使用统一 reason code（如 `MISSING_API_KEY`、`INSUFFICIENT_USABLE_MODELS`），避免中英文口径漂移
+- 先返回的模型会先标记完成，但会继续等待其他模型直到超时或全部完成
+- 单模型失败不影响其他模型；有可用结果就进入人工选择
+- 若未进入对比（如总开关关闭、缺 key、可用模型数不足 2），不会报错，会自动单模型执行并输出“降级原因明细”
+
+**上下文桥接案例（简版）：**
+
+```text
+~compare 这个 bug 为什么只在 prod 出现？
+
+context_pack:
+- 关键文件: src/api/auth.ts:42, src/config/env.ts:10
+- 运行现象: 仅 prod 缺少 X-Trace-Id
+- 脱敏: Authorization/Cookie 已替换为 <REDACTED>
+- 截断: 仅保留命中函数前后 80 行
+```
+
+**降级原因明细（真实示例）：**
+
+```text
+[sopify-agent-ai] 咨询问答 !
+
+未进入多模型并发，已按单模型执行。
+降级原因:
+- MISSING_API_KEY: candidate_id=glm
+- INSUFFICIENT_USABLE_MODELS: 1<2
+结果: 我是 Sopify 的 AI 编程助手，可帮你分析需求、设计方案与实现代码。
+
+---
+Changes: 0 files
+Next: 可调整 multi_model.enabled / candidates[*].enabled / include_default_model / context_bridge 或补齐环境变量
+```
 
 ---
 
@@ -189,6 +285,7 @@ plan:
 
 | 子 Skill | 用途 | 文档 |
 |---------|------|------|
+| `model-compare` | 多模型并发对比（配置驱动、失败隔离、人工选择） | [中文说明](./Codex/Skills/CN/skills/sopify/model-compare/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/model-compare/SKILL.md) |
 | `workflow-learning` | 任务链路完整记录、回放与逐步讲解 | [中文说明](./Codex/Skills/CN/skills/sopify/workflow-learning/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/workflow-learning/SKILL.md) |
 
 子技能独立变更记录（与仓库总变更分离）：
@@ -241,7 +338,7 @@ Next: ~go exec 执行 或 回复修改意见
 - `×` 错误
 
 **阶段名使用：**
-- `命令完成`：用于带命令前缀的流程输出（`~go/~go plan/~go exec`）
+- `命令完成`：用于带命令前缀的流程输出（`~go/~go plan/~go exec/~compare`）
 - `咨询问答`：用于无命令前缀的问答/澄清场景
 
 ---

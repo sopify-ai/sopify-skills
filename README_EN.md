@@ -75,7 +75,7 @@ Restart your terminal and type:
 Show skills list
 ```
 
-**Expected:** Agent lists 6 skills (analyze, design, develop, kb, templates, workflow-learning)
+**Expected:** Agent lists 7 skills (analyze, design, develop, kb, templates, model-compare, workflow-learning)
 
 ### First Use
 
@@ -94,6 +94,10 @@ Show skills list
 
 # 5. Replay / retrospective for the latest implementation
 "Replay the latest implementation and explain why this approach was chosen"
+
+# 6. Multi-model parallel comparison (manual choice)
+"~compare Compare options for this refactor"
+"对比分析：Compare options for this refactor"
 ```
 
 ---
@@ -139,10 +143,38 @@ workflow:
 plan:
   level: auto           # auto / light / standard / full
   directory: .sopify-skills    # Knowledge base directory
+
+# Multi-model compare (MVP) configuration
+multi_model:
+  enabled: true
+  trigger: manual       # trigger only for ~compare or "对比分析："
+  timeout_sec: 25
+  max_parallel: 3
+  include_default_model: true  # optional; defaults to true even when omitted
+  context_bridge: true  # optional; defaults to true (external models use context bridge; false = emergency bypass)
+  candidates:
+    - id: glm
+      enabled: true
+      provider: openai_compatible
+      base_url: https://open.bigmodel.cn/api/paas/v4
+      model: glm-4.7
+      api_key_env: GLM_API_KEY
+    - id: qwen
+      enabled: true
+      provider: openai_compatible
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model: qwen-plus
+      api_key_env: DASHSCOPE_API_KEY
 ```
 
 Note: `title_color` only applies lightweight styling to the output title line; if color is unsupported, output falls back to plain text automatically.
 Note: `workflow.learning.auto_capture` controls proactive recording only; replay/review/why intent recognition is always enabled.
+Note: `multi_model.enabled` is the feature-level gate, while `multi_model.candidates[*].enabled` is the per-candidate participation gate.
+Note: `multi_model.include_default_model` defaults to `true` (the current session default model is included even if omitted).
+Note: `multi_model.context_bridge` defaults to `true`; use `false` only as an emergency bypass (question-only input). Execution details are centralized in `scripts/model_compare_runtime.py`.
+Note: parallel compare requires at least 2 usable models; below that, compare falls back to single-model with detailed reasons.
+Note: fallback reasons should use normalized reason codes (for example `MISSING_API_KEY`, `INSUFFICIENT_USABLE_MODELS`).
+Note: `multi_model.candidates[*].api_key_env` reads keys from environment variables only; avoid plaintext keys in config files.
 
 ### Workflow Modes
 
@@ -180,6 +212,70 @@ Note: intent recognition for replay/review/why-explanations remains available in
 | `~go` | Full workflow auto-execution |
 | `~go plan` | Plan only, no execution |
 | `~go exec` | Execute existing plan |
+| `~compare` | Run parallel comparison across configured models; includes the session default model by default and falls back with reasons when usable model count is below 2 |
+
+---
+
+## Multi-Model Compare (MVP)
+
+**Trigger conditions (only these two):**
+- `~compare <question>`
+- `对比分析：<question>`
+
+**Environment variables (this is the only key method):**
+
+```bash
+# Effective for current shell session
+export GLM_API_KEY="your_glm_key"
+export DASHSCOPE_API_KEY="your_qwen_key"
+```
+
+```bash
+# Persist in zsh (~/.zshrc)
+echo 'export GLM_API_KEY="your_glm_key"' >> ~/.zshrc
+echo 'export DASHSCOPE_API_KEY="your_qwen_key"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+**Behavior:**
+- `multi_model.enabled` controls whether compare is enabled; `candidates[*].enabled` controls whether a candidate participates
+- The current session default model is included by default (`include_default_model` defaults to true, no extra config needed)
+- Context bridge is on by default (`context_bridge=true`): with external candidates, each model receives `question + context_pack`; with `false`, external models get question-only input
+- `~compare` runtime implementation is converged in `scripts/model_compare_runtime.py` (entry calls `run_model_compare_runtime`)
+- Execution-level details (extract/redact/truncate chain, budgets, empty-pack guard) are centralized in `scripts/model_compare_runtime.py` and the `model-compare` sub-skill doc
+- Parallel compare starts only when usable models reach 2 (built-in rule, no extra config needed)
+- Fallback reasons should use normalized reason codes (for example `MISSING_API_KEY`, `INSUFFICIENT_USABLE_MODELS`) to keep CN/EN wording aligned
+- If one model returns first, it is marked done while waiting for others until timeout/all done
+- One-model failure does not block others; any successful result can proceed to manual choice
+- If compare is not entered (feature disabled/missing keys/usable model count below 2), it does not error and falls back to single-model with detailed fallback reasons
+
+**Context bridge example (short):**
+
+```text
+~compare Why does this bug only happen in prod?
+
+context_pack:
+- Key files: src/api/auth.ts:42, src/config/env.ts:10
+- Runtime signal: X-Trace-Id missing only in prod
+- Redaction: Authorization/Cookie replaced with <REDACTED>
+- Truncation: keep only +/- 80 lines around matched functions
+```
+
+**Fallback reasons (real example):**
+
+```text
+[sopify-agent-ai] Q&A !
+
+Compare mode not entered; executed in single-model mode.
+Fallback reasons:
+- MISSING_API_KEY: candidate_id=glm
+- INSUFFICIENT_USABLE_MODELS: 1<2
+Result: I am Sopify's AI coding assistant for analysis, design, and implementation tasks.
+
+---
+Changes: 0 files
+Next: Adjust multi_model.enabled / candidates[*].enabled / include_default_model / context_bridge or provide missing env vars
+```
 
 ---
 
@@ -189,6 +285,7 @@ Note: intent recognition for replay/review/why-explanations remains available in
 
 | Sub-skill | Purpose | Docs |
 |-----------|---------|------|
+| `model-compare` | Config-driven multi-model parallel compare with failure isolation and manual selection | [中文说明](./Codex/Skills/CN/skills/sopify/model-compare/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/model-compare/SKILL.md) |
 | `workflow-learning` | Full trace capture, replay, and step-by-step explanation | [中文说明](./Codex/Skills/CN/skills/sopify/workflow-learning/SKILL.md) / [English Guide](./Codex/Skills/EN/skills/sopify/workflow-learning/SKILL.md) |
 
 Sub-skill change history is tracked separately from the repository-level changelog:
@@ -241,7 +338,7 @@ Next: ~go exec to execute or reply with feedback
 - `×` Error
 
 **Phase Naming:**
-- `Command Complete`: for command-prefixed flows (`~go/~go plan/~go exec`)
+- `Command Complete`: for command-prefixed flows (`~go/~go plan/~go exec/~compare`)
 - `Q&A`: for non-command questions/clarifications
 
 ---

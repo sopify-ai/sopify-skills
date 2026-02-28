@@ -67,6 +67,53 @@ plan:
   directory: .sopify-skills
 
 # ============================================================
+# MULTI-MODEL COMPARE MVP (多模型对比 MVP)
+# ============================================================
+
+multi_model:
+  # Enable compare mode.
+  enabled: false
+
+  # Trigger policy:
+  # - manual: trigger only when user inputs "~compare <question>" or "对比分析：<问题>"
+  trigger: manual
+
+  # Include current session default model as a compare candidate.
+  # Defaults to true even when omitted.
+  include_default_model: true
+
+  # Context bridge switch (single bypass):
+  # - true (default): when compare includes external candidates, build
+  #   local context pack (extract -> redact -> truncate) and send with question.
+  # - false: bypass context bridge and send only raw question.
+  context_bridge: true
+
+  # If no usable candidates are found (not configured/disabled/missing env keys),
+  # compare requests should gracefully fallback to single-model execution.
+
+  # Overall timeout for a compare request in seconds.
+  timeout_sec: 25
+
+  # Max number of models to call in parallel.
+  max_parallel: 3
+
+  # Candidate models.
+  # API keys must come from environment variables; do not store plain keys here.
+  candidates:
+    - id: glm
+      enabled: true
+      provider: openai_compatible
+      base_url: https://open.bigmodel.cn/api/paas/v4
+      model: glm-4.7
+      api_key_env: GLM_API_KEY
+    - id: qwen
+      enabled: true
+      provider: openai_compatible
+      base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      model: qwen-plus
+      api_key_env: DASHSCOPE_API_KEY
+
+# ============================================================
 # ADVANCED CONFIGURATION (高级配置)
 # ============================================================
 
