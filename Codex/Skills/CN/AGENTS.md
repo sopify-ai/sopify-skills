@@ -128,12 +128,12 @@ Next: {下一步提示}
 **命令：**
 | 命令 | 说明 |
 |-----|------|
-| `~go` | 自动判断并执行全流程 |
-| `~go plan` | 只规划不执行 |
-| `~go exec` | 执行已有方案 |
-| `~compare` | 多模型并发对比（默认含当前会话模型；可用模型数不足 2 时降级并给出原因） |
-
-说明：当前仓库若存在 `scripts/go_plan_runtime.py`，`~go plan` 应优先走该 repo-local runtime 入口；不存在时再回退到方案设计规则。
+ | `~go` | 自动判断并执行全流程 |
+ | `~go plan` | 只规划不执行 |
+ | `~go exec` | 执行已有方案 |
+ | `~compare` | 多模型并发对比（默认含当前会话模型；可用模型数不足 2 时降级并给出原因） |
+ 
+说明：当前仓库若存在 `scripts/sopify_runtime.py`，原始输入应优先走该默认 repo-local runtime 入口；仅在明确只走 `~go plan` 时使用 `scripts/go_plan_runtime.py` 这个 plan-only helper。
 
 **workflow-learning 主动记录策略：**
 ```yaml
@@ -258,7 +258,7 @@ progressive: 按需创建文件 (默认)
 检查命令前缀 (~go, ~go plan, ~go exec, ~compare)
     ↓
 ├─ ~go exec → 执行已有方案
-├─ ~go plan → 规划模式 (需求分析 → 方案设计；若存在 scripts/go_plan_runtime.py 则优先走 repo-local runtime 入口)
+├─ ~go plan → 规划模式 (需求分析 → 方案设计；若存在 scripts/sopify_runtime.py 则原始输入优先走该默认入口，plan-only 场景再使用 scripts/go_plan_runtime.py)
 ├─ ~go → 全流程模式
 ├─ ~compare → 模型对比（调用 scripts/model_compare_runtime.py 运行时）
 └─ 无前缀 → 语义分析
@@ -406,11 +406,12 @@ Next: 请验证功能
 
 **repo-local runtime helper：**
 ```
-scripts/go_plan_runtime.py      # 当前仓库用于 ~go plan 的本地入口
-scripts/model_compare_runtime.py  # 当前仓库用于 ~compare 的本地入口
+scripts/sopify_runtime.py         # 当前仓库默认原始输入入口，直接交给 router 分流
+scripts/go_plan_runtime.py        # 当前仓库用于 plan-only slice 的 helper
+scripts/model_compare_runtime.py  # ~compare 的运行时实现，不是默认通用入口
 ```
 
-说明：当前只有 `~go plan` 与 `~compare` 在仓库内有明确脚本入口；其余命令仍以契约层和分阶段技能为主。
+说明：当前默认入口是 `scripts/sopify_runtime.py`；`scripts/go_plan_runtime.py` 只负责 plan-only；`~compare` 仍依赖宿主侧专用桥接。
 
 **配置文件：** `sopify.config.yaml` (项目根目录)
 

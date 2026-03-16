@@ -28,7 +28,7 @@ P0 实现原则：
 
 - [x] 明确 repo-local helper 依赖的 runtime 资产范围
 - [x] 消除 README 安装路径与仓库 runtime 资产之间的静默断层
-- [x] 给出自用与二次接入共用的调用入口（`scripts/go_plan_runtime.py` + `--workspace-root`）
+- [x] 给出自用与二次接入共用的默认调用入口（`scripts/sopify_runtime.py` + `--workspace-root`）
 
 验收条件：
 
@@ -73,6 +73,12 @@ P0 实现原则：
 - [x] 说明当前 runtime 已经接入到哪一步
 - [x] 说明当前不承诺或尚未 runtime 化的能力
 - [x] 保证 README、AGENTS、蓝图任务口径一致
+
+补充说明：
+
+- 当前默认 repo-local runtime 入口已收口到 `scripts/sopify_runtime.py`
+- `scripts/go_plan_runtime.py` 仅保留为 plan-only helper
+- `~compare` 仍未在默认通用入口中自动桥接
 
 验收条件：
 

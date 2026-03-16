@@ -221,11 +221,21 @@ workflow.mode = adaptive:
 
 ## repo-local runtime helper
 
-如果当前仓库存在 `scripts/go_plan_runtime.py`，且目标是执行 `~go plan` 路径：
+如果当前仓库存在 `scripts/sopify_runtime.py`，且输入是原始用户请求：
+
+- 优先把原始输入交给该默认入口，让 router 自己决定 `consult / quick_fix / light_iterate / workflow / plan_only / compare`
+- 不要把裸文本一律手工改写成 `~go plan`
+
+如果目标是明确执行 `~go plan` 路径，且当前仓库存在 `scripts/go_plan_runtime.py`：
 
 - 优先调用该入口，而不是手工拼接方案摘要
 - 由 runtime 负责配置加载、路由、方案骨架生成、state/replay 落盘与统一输出渲染
 - 本技能继续提供方案结构、任务拆分和输出契约
+
+补充边界：
+
+- `scripts/go_plan_runtime.py` 只用于 plan-only slice
+- `~compare` 仍然需要宿主侧专用桥接，不通过默认通用入口自动接通
 
 如果该入口不存在：
 

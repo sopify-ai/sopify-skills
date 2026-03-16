@@ -221,11 +221,21 @@ User replies with feedback:
 
 ## Repo-Local Runtime Helper
 
-If the current repository provides `scripts/go_plan_runtime.py` and the goal is to execute the `~go plan` path:
+If the current repository provides `scripts/sopify_runtime.py` and the input is raw user text:
+
+- Prefer that default entry and let the router decide `consult / quick_fix / light_iterate / workflow / plan_only / compare`
+- Do not rewrite every bare request into `~go plan`
+
+If the goal is explicitly the `~go plan` path and the current repository provides `scripts/go_plan_runtime.py`:
 
 - Prefer that entry instead of hand-assembling the plan summary
 - Let the runtime own config loading, routing, plan scaffold generation, state/replay persistence, and unified output rendering
 - Keep this skill as the contract source for plan structure, task breakdown, and summary format
+
+Boundary note:
+
+- `scripts/go_plan_runtime.py` is only for the plan-only slice
+- `~compare` still needs a host-side dedicated bridge; the default generic entry does not auto-connect it
 
 If that helper does not exist:
 

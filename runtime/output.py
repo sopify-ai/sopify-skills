@@ -49,12 +49,28 @@ _LABELS = {
         "missing": "未生成",
         "none": "无",
         "cleared": "已清理当前活跃流程",
+        "workflow_handoff": "已生成方案骨架，后续开发仍需宿主继续",
+        "light_handoff": "已生成 light 方案，后续改动仍需宿主继续",
+        "quick_fix_handoff": "已识别 quick_fix 路由，当前 repo-local runtime 未执行代码修改",
+        "consult_handoff": "已识别咨询问答路由，当前 repo-local runtime 不生成正文回答",
+        "compare_handoff": "已识别 compare 路由，当前通用入口未构造 compare runtime payload",
+        "compare_ready": "compare runtime 已返回结构化结果",
+        "replay_handoff": "已识别 replay 路由，当前仍需 workflow-learning 专用链路",
+        "resume_handoff": "已恢复当前流程，当前 repo-local runtime 未执行 develop bridge",
+        "exec_handoff": "已识别 exec 路由，当前 repo-local runtime 未执行 develop bridge",
+        "default_handoff": "已识别路由，当前 repo-local runtime 未执行后续动作",
         "next_retry": "检查输入、配置或运行时状态后重试",
         "next_plan": "~go exec 执行 或 回复修改意见",
-        "next_resume": "继续当前方案实施，或回复修改意见",
+        "next_workflow": "在宿主会话中继续执行后续阶段，或显式使用 ~go plan 只规划",
+        "next_light_iterate": "在宿主会话中继续执行轻量迭代，或回复修改意见",
+        "next_resume": "在宿主会话中继续 develop 阶段",
+        "next_exec": "在宿主会话中继续 develop 阶段",
         "next_cancel": "如需继续，重新发起 ~go plan 或 ~go",
         "next_compare": "人工选择候选结果并继续",
-        "next_consult": "继续描述要修改的内容",
+        "next_compare_bridge": "继续使用宿主侧 ~compare 专用桥接",
+        "next_replay": "继续使用 workflow-learning 回放链路",
+        "next_quick_fix": "在宿主会话中继续执行快速修复",
+        "next_consult": "在宿主会话中继续问答，或改成明确变更请求",
     },
     "en-US": {
         "plan": "Plan",
@@ -68,12 +84,28 @@ _LABELS = {
         "missing": "not generated",
         "none": "none",
         "cleared": "active flow cleared",
+        "workflow_handoff": "Plan scaffold generated; downstream development still needs the host flow",
+        "light_handoff": "Light plan generated; downstream changes still need the host flow",
+        "quick_fix_handoff": "quick_fix route recognized; the repo-local runtime has not modified code",
+        "consult_handoff": "Consult route recognized; the repo-local runtime does not generate full answers",
+        "compare_handoff": "compare route recognized; the generic entry did not construct compare runtime payloads",
+        "compare_ready": "compare runtime returned structured results",
+        "replay_handoff": "replay route recognized; workflow-learning still needs its dedicated bridge",
+        "resume_handoff": "Active flow restored; the repo-local runtime has not executed the develop bridge",
+        "exec_handoff": "exec route recognized; the repo-local runtime has not executed the develop bridge",
+        "default_handoff": "Route recognized; the repo-local runtime has not executed the downstream action",
         "next_retry": "Check the input, config, or runtime state and retry",
         "next_plan": "~go exec to execute or reply with feedback",
-        "next_resume": "Continue the current plan execution or reply with feedback",
+        "next_workflow": "Continue the downstream stages in the host session, or use ~go plan for planning only",
+        "next_light_iterate": "Continue the light iteration in the host session, or reply with feedback",
+        "next_resume": "Continue the develop stage in the host session",
+        "next_exec": "Continue the develop stage in the host session",
         "next_cancel": "Start a new ~go plan or ~go flow when ready",
         "next_compare": "Review the candidate outputs and continue",
-        "next_consult": "Describe the change request in more detail",
+        "next_compare_bridge": "Use the host-side ~compare bridge for compare execution",
+        "next_replay": "Use the workflow-learning replay flow",
+        "next_quick_fix": "Continue the quick-fix flow in the host session",
+        "next_consult": "Continue the discussion in the host session, or restate it as a change request",
     },
 }
 
@@ -145,6 +177,7 @@ def render_runtime_error(
 def _core_lines(result: RuntimeResult, language: str) -> list[str]:
     labels = _LABELS[language]
     route_name = result.route.route_name
+
     if route_name == "plan_only" and result.plan_artifact is not None:
         replay_value = result.replay_session_dir or labels["missing"]
         return [
@@ -153,12 +186,19 @@ def _core_lines(result: RuntimeResult, language: str) -> list[str]:
             f"{labels['replay']}: {replay_value}",
         ]
 
+    if route_name in {"workflow", "light_iterate"} and result.plan_artifact is not None:
+        return [
+            f"{labels['plan']}: {result.plan_artifact.path}",
+            f"{labels['summary']}: {result.plan_artifact.summary}",
+            f"{labels['status']}: {_route_status_message(result, language)}",
+        ]
+
     if route_name in {"resume_active", "exec_plan"} and result.recovered_context.current_run is not None:
         current_plan = result.recovered_context.current_plan
         return [
             f"{labels['current_plan']}: {current_plan.path if current_plan is not None else labels['missing']}",
             f"{labels['stage']}: {result.recovered_context.current_run.stage}",
-            f"{labels['replay']}: {result.replay_session_dir or labels['missing']}",
+            f"{labels['status']}: {_route_status_message(result, language)}",
         ]
 
     if route_name == "cancel_active":
@@ -168,11 +208,10 @@ def _core_lines(result: RuntimeResult, language: str) -> list[str]:
             f"{labels['replay']}: {result.replay_session_dir or labels['missing']}",
         ]
 
-    reason = _diagnostic_reason(result)
     return [
         f"{labels['route']}: {route_name}",
-        f"{labels['reason']}: {reason}",
-        f"{labels['replay']}: {result.replay_session_dir or labels['missing']}",
+        f"{labels['status']}: {_route_status_message(result, language)}",
+        f"{labels['reason']}: {_diagnostic_reason(result)}",
     ]
 
 
@@ -195,12 +234,22 @@ def _next_hint(result: RuntimeResult, language: str) -> str:
     route_name = result.route.route_name
     if route_name == "plan_only" and result.plan_artifact is not None:
         return labels["next_plan"]
-    if route_name in {"resume_active", "exec_plan"} and result.recovered_context.has_active_run:
+    if route_name == "workflow" and result.plan_artifact is not None:
+        return labels["next_workflow"]
+    if route_name == "light_iterate" and result.plan_artifact is not None:
+        return labels["next_light_iterate"]
+    if route_name == "resume_active":
         return labels["next_resume"]
+    if route_name == "exec_plan":
+        return labels["next_exec"]
     if route_name == "cancel_active":
         return labels["next_cancel"]
-    if route_name == "compare" and result.skill_result:
-        return labels["next_compare"]
+    if route_name == "compare":
+        return labels["next_compare"] if result.skill_result else labels["next_compare_bridge"]
+    if route_name == "replay":
+        return labels["next_replay"]
+    if route_name == "quick_fix":
+        return labels["next_quick_fix"]
     if route_name == "consult":
         return labels["next_consult"]
     return labels["next_retry"]
@@ -210,15 +259,37 @@ def _status_symbol(result: RuntimeResult) -> str:
     route_name = result.route.route_name
     if route_name == "plan_only":
         return "✓" if result.plan_artifact is not None else "!"
-    if route_name in {"resume_active", "exec_plan"}:
-        return "✓" if result.recovered_context.has_active_run else "!"
     if route_name == "cancel_active":
         return "✓"
-    if route_name == "compare":
-        return "✓" if result.skill_result else "!"
+    if route_name == "compare" and result.skill_result:
+        return "✓"
+    if route_name in {"workflow", "light_iterate", "quick_fix", "consult", "replay", "resume_active", "exec_plan", "compare"}:
+        return "!"
     if result.notes:
         return "!"
     return "✓"
+
+
+def _route_status_message(result: RuntimeResult, language: str) -> str:
+    labels = _LABELS[language]
+    route_name = result.route.route_name
+    if route_name == "workflow":
+        return labels["workflow_handoff"]
+    if route_name == "light_iterate":
+        return labels["light_handoff"]
+    if route_name == "quick_fix":
+        return labels["quick_fix_handoff"]
+    if route_name == "consult":
+        return labels["consult_handoff"]
+    if route_name == "compare":
+        return labels["compare_ready"] if result.skill_result else labels["compare_handoff"]
+    if route_name == "replay":
+        return labels["replay_handoff"]
+    if route_name == "resume_active":
+        return labels["resume_handoff"]
+    if route_name == "exec_plan":
+        return labels["exec_handoff"]
+    return labels["default_handoff"]
 
 
 def _diagnostic_reason(result: RuntimeResult) -> str:

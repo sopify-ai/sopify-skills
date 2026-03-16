@@ -72,8 +72,9 @@ Notes:
 
 - The copy commands above sync skill docs, templates, and sub-skill folders only; they do not automatically install the repo-root `runtime/` and `scripts/` into another project
 - This repository currently closes two repo-local runtime entry points:
-  - `scripts/go_plan_runtime.py`: runtime-backed `~go plan`
-  - `scripts/model_compare_runtime.py`: `~compare`
+  - `scripts/sopify_runtime.py`: the default raw-input entry, which hands input directly to the router
+  - `scripts/go_plan_runtime.py`: the plan-only helper, which forces the `~go plan` path
+- `scripts/model_compare_runtime.py` is the runtime implementation for `~compare`, not the default generic CLI entry
 - If you want to reuse the runtime assets, keep this repository's `runtime/` and `scripts/` together instead of copying only `Codex/Skills/*` or `Claude/Skills/*`
 
 ### Verify Installation
@@ -113,11 +114,17 @@ Show skills list
 This repository now provides a minimal runtime validation path:
 
 ```bash
-# Validate in this repository
+# Default raw-input entry
+python3 scripts/sopify_runtime.py "Refactor the database layer"
+
+# Explicit command through the same generic entry
+python3 scripts/sopify_runtime.py "~go plan Refactor the database layer"
+
+# Validate the plan-only slice
 python3 scripts/go_plan_runtime.py "Refactor the database layer"
 
 # Validate against another workspace
-python3 scripts/go_plan_runtime.py --workspace-root /path/to/project "Refactor the database layer"
+python3 scripts/sopify_runtime.py --workspace-root /path/to/project "Refactor the database layer"
 ```
 
 Expected result:
@@ -129,8 +136,11 @@ Expected result:
 
 Current boundary:
 
-- repo-local runtime helpers are closed for `~go plan` and `~compare`
-- no standalone runtime helper is provided yet for `~go`, `~go exec`, or `workflow-learning`
+- closed repo-local runtime helpers:
+  - `scripts/sopify_runtime.py`: default raw-input entry
+  - `scripts/go_plan_runtime.py`: plan-only helper
+- the generic entry still does not auto-bridge `~compare` or `workflow-learning`
+- no standalone develop bridge is provided yet for `~go exec`
 - the current shape is better suited for self-use and secondary integration than for a full installer flow
 
 ---
@@ -243,11 +253,15 @@ Note: intent recognition for replay/review/why-explanations remains available in
 | Command | Description |
 |---------|-------------|
 | `~go` | Full workflow auto-execution |
-| `~go plan` | Plan only, no execution; this repo provides `scripts/go_plan_runtime.py` as the repo-local runtime helper |
+| `~go plan` | Plan only, no execution; this repo provides `scripts/go_plan_runtime.py` as the plan-only helper |
 | `~go exec` | Execute existing plan |
-| `~compare` | Run parallel comparison across configured models; the implementation is closed in `scripts/model_compare_runtime.py`, with fallback when usable model count is below 2 |
+| `~compare` | Run parallel comparison across configured models; the runtime implementation lives in `scripts/model_compare_runtime.py`, but the generic entry does not auto-construct compare payloads |
 
-Note: only `~go plan` and `~compare` have explicit script entry points inside this repository today. Other commands still rely on the contract layer and staged skills.
+Notes:
+
+- The default repo-local runtime entry is `scripts/sopify_runtime.py`, which passes raw input to the router
+- `scripts/go_plan_runtime.py` is reserved for the plan-only slice
+- `~compare` still relies on a host-side dedicated bridge, rather than the generic entry
 
 ---
 

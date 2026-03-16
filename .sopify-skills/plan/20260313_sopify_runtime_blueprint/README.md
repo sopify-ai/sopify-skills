@@ -93,7 +93,8 @@ R0 需要补齐：
 
 当前已收口：
 
-- 仓库内新增 `scripts/go_plan_runtime.py` 作为 `~go plan` 的 repo-local runtime helper
+- 仓库内新增 `scripts/sopify_runtime.py` 作为默认 repo-local 原始输入入口
+- `scripts/go_plan_runtime.py` 退回为 plan-only helper
 - `runtime/output.py` 已将 `RuntimeResult` 渲染为 Sopify 统一摘要
 - 本地验证已覆盖 plan / state / replay 落盘与重复执行目录冲突处理
 - README、AGENTS、design skill、蓝图任务单口径已对齐
@@ -102,7 +103,8 @@ R0 需要补齐：
 
 - 面向安装分发的 runtime 资产自动同步
 - CI 与进仓测试纳入
-- `~go` / `~go exec` / `workflow-learning` 的独立 runtime helper
+- `~compare` 的通用入口自动桥接
+- `~go exec` / `workflow-learning` 的独立 runtime helper
 
 ### P1
 
