@@ -114,6 +114,7 @@ bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
 ```bash
 # 进入任意项目仓库后，直接触发 Sopify；
 # 若当前仓库尚未准备 `.sopify-runtime/`，宿主会先自动补齐再继续执行。
+# 文档治理约定下，真实项目仓库首次触发后应至少拥有 `.sopify-skills/blueprint/README.md` 作为项目索引。
 
 # 1. 简单任务 → 直接执行
 "修复 src/utils.ts 第 42 行的 typo"
@@ -165,7 +166,7 @@ bash scripts/check-runtime-smoke.sh
   - `.sopify-skills/history/index.md`
 - 生成 `.sopify-skills/plan/`
 - 更新 `.sopify-skills/state/`
-- 写入 `.sopify-skills/replay/`
+- 在命中主动记录策略时写入 `.sopify-skills/replay/`
 - 终端输出 Sopify 统一摘要，而不是原始结构化对象
 
 当前边界：
@@ -182,6 +183,20 @@ bash scripts/check-runtime-smoke.sh
 - 当前 KB 快照只读取根配置、manifest 与顶层目录，不做源码级扫描
 - 不属于本轮发布切片：`~compare` 的通用入口自动桥接、`workflow-learning` 的独立 runtime helper、`~go exec` develop bridge
 - 因此当前已经适合“自用 + 二次接入”，但仍不是完整宿主安装器形态
+
+### 文档治理约定
+
+本节定义当前对外文档契约；runtime 自动化会按该契约逐步对齐。
+
+接入 Sopify 的项目默认遵循以下文档治理模型：
+
+- `blueprint/` 是项目级长期蓝图，默认进入版本管理
+- `plan/` 是当前活动方案，默认本地使用、默认忽略
+- `history/` 是收口后的方案归档，默认本地使用、默认忽略
+- `replay/` 是可选回放能力，不属于基础文档治理契约
+- 首次在真实项目仓库触发 Sopify 时，应至少拥有 `.sopify-skills/blueprint/README.md`
+- 首次进入 plan 生命周期时，再补齐 `blueprint/background.md / design.md / tasks.md`
+- 当前 plan 到“本轮任务收口、准备交付验证”时再归档到 `history/`
 
 ---
 
@@ -443,6 +458,11 @@ Next: ~go exec 执行 或 回复修改意见
 
 ```
 .sopify-skills/                # 知识库根目录
+├── blueprint/                 # 项目级长期蓝图，默认进入版本管理
+│   ├── README.md              # 项目入口索引
+│   ├── background.md          # 长期目标、边界、约束、非目标
+│   ├── design.md              # 模块边界、宿主契约、目录契约
+│   └── tasks.md               # 长期演进项与架构待办
 ├── project.md                 # 项目技术约定
 ├── wiki/
 │   ├── overview.md            # 项目概述
@@ -450,15 +470,23 @@ Next: ~go exec 执行 或 回复修改意见
 ├── user/
 │   ├── preferences.md         # 用户长期偏好
 │   └── feedback.jsonl         # 原始反馈事件
-├── plan/                      # 当前方案
+├── plan/                      # 当前活动方案，默认忽略
 │   └── YYYYMMDD_feature/
 │       ├── background.md      # 需求背景 (原 why.md)
 │       ├── design.md          # 技术设计 (原 how.md)
 │       └── tasks.md           # 任务清单 (原 task.md)
-└── history/                   # 历史方案
-    ├── index.md
-    └── YYYY-MM/
+├── history/                   # 收口后的方案归档，默认忽略
+│   ├── index.md
+│   └── YYYY-MM/
+└── replay/                    # 可选回放能力，默认忽略
 ```
+
+默认 Git 策略：
+
+- `blueprint/` 默认进入版本管理
+- `plan/` 与 `history/` 默认本地使用、默认忽略
+- `state/` 与 `replay/` 默认忽略
+- 项目可按自身需要调整 `.gitignore`，但默认建议保持以上分层
 
 ---
 

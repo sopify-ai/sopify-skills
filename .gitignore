@@ -9,6 +9,5 @@ __pycache__/
 
 .sopify-skills/state/
 .sopify-skills/replay/
-.sopify-skills/plan/*
-!.sopify-skills/plan/20260313_sopify_runtime_blueprint/
-!.sopify-skills/plan/20260313_sopify_runtime_blueprint/**
+.sopify-skills/plan/
+.sopify-skills/history/

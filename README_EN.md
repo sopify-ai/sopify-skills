@@ -114,6 +114,7 @@ Notes:
 ```bash
 # After the initial install, enter any project workspace and trigger Sopify directly.
 # If `.sopify-runtime/` is missing, the host bootstraps it first and then continues.
+# Under the documentation contract, the first real-project trigger should at least create `.sopify-skills/blueprint/README.md` as the project index.
 
 # 1. Simple task → Direct execution
 "Fix the typo on line 42 in src/utils.ts"
@@ -165,7 +166,7 @@ Expected result:
   - `.sopify-skills/history/index.md`
 - generate `.sopify-skills/plan/`
 - update `.sopify-skills/state/`
-- write `.sopify-skills/replay/`
+- write `.sopify-skills/replay/` only when proactive capture applies
 - print the unified Sopify summary instead of a raw structured object
 
 Current boundary:
@@ -181,6 +182,20 @@ Current boundary:
 - `P1-A` is now landed: the first runtime execution bootstraps the minimum KB skeleton, but this still does not include selective history recovery or history archive
 - not part of this release slice: generic-entry auto-bridge for `~compare`, a standalone `workflow-learning` runtime helper, and the `~go exec` develop bridge
 - the current shape now fits self-use and secondary integration, but it is still not a full host-side installer flow
+
+### Documentation Governance Contract
+
+This section defines the outward-facing documentation contract; runtime automation will align to it incrementally.
+
+Projects integrated with Sopify follow this default documentation model:
+
+- `blueprint/` is the project-level long-lived blueprint and is tracked by default
+- `plan/` is the current active plan and is local-only by default
+- `history/` is the finalized archive and is local-only by default
+- `replay/` is an optional capability and is not part of the baseline documentation contract
+- the first Sopify trigger in a real project repository should at least land `.sopify-skills/blueprint/README.md`
+- the first plan lifecycle should then populate `blueprint/background.md / design.md / tasks.md`
+- the active plan is archived into `history/` only when the task is being closed out and prepared for verification
 
 ---
 
@@ -442,6 +457,11 @@ Next: ~go exec to execute or reply with feedback
 
 ```
 .sopify-skills/                        # Knowledge base root
+├── blueprint/                 # Project-level long-lived blueprint, tracked by default
+│   ├── README.md              # Project entry index
+│   ├── background.md          # Long-term goals, boundaries, constraints, non-goals
+│   ├── design.md              # Module boundaries, host contracts, directory contracts
+│   └── tasks.md               # Long-term evolution items and architecture debt
 ├── project.md                  # Project technical conventions
 ├── wiki/
 │   ├── overview.md            # Project overview
@@ -449,15 +469,23 @@ Next: ~go exec to execute or reply with feedback
 ├── user/
 │   ├── preferences.md         # Long-term user preferences
 │   └── feedback.jsonl         # Raw feedback events
-├── plan/                       # Current plans
+├── plan/                       # Current active plans, ignored by default
 │   └── YYYYMMDD_feature/
 │       ├── background.md      # Requirement background (formerly why.md)
 │       ├── design.md          # Technical design (formerly how.md)
 │       └── tasks.md           # Task list (formerly task.md)
-└── history/                    # Historical plans
-    ├── index.md
-    └── YYYY-MM/
+├── history/                    # Finalized archives, ignored by default
+│   ├── index.md
+│   └── YYYY-MM/
+└── replay/                     # Optional replay capability, ignored by default
 ```
+
+Default Git strategy:
+
+- `blueprint/` is tracked by default
+- `plan/` and `history/` stay local by default
+- `state/` and `replay/` stay ignored by default
+- projects may still customize `.gitignore`, but the layered default above is the recommended baseline
 
 ---
 

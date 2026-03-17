@@ -201,24 +201,32 @@ Complex: Files > 5, architectural changes, new features
 **Directory Structure:**
 ```
 .sopify-skills/
-├── plan/                    # Current plans
+├── blueprint/               # Project-level long-lived blueprint, tracked by default
+│   ├── README.md            # Project entry index
+│   ├── background.md
+│   ├── design.md
+│   └── tasks.md
+├── plan/                    # Current plans, ignored by default
 │   └── YYYYMMDD_feature/
-├── history/                 # Completed plans
+├── history/                 # Completed plan archives, ignored by default
 ├── wiki/                    # Project docs
 │   ├── overview.md
 │   └── modules/
 ├── user/                    # User preferences and feedback
 │   ├── preferences.md
 │   └── feedback.jsonl
-└── project.md               # Technical conventions
+├── project.md               # Technical conventions
+└── replay/                  # Optional replay capability, ignored by default
 ```
 
 ### A6 | Lifecycle Management
 
 ```yaml
+First Trigger: real project repositories should at least create .sopify-skills/blueprint/README.md
+First Plan Lifecycle: populate .sopify-skills/blueprint/background.md / design.md / tasks.md
 Plan Creation: .sopify-skills/plan/YYYYMMDD_feature_name/
-Development Complete: Migrate to .sopify-skills/history/YYYY-MM/
-Index Update: .sopify-skills/history/index.md
+Task Close-Out: refresh blueprint README managed sections and update deeper blueprint docs when required
+Ready for Verification: migrate to .sopify-skills/history/YYYY-MM/ and update index.md
 ```
 
 ---
@@ -431,5 +439,7 @@ Note: the default entry is `scripts/sopify_runtime.py`; when vendored, prefer `.
 **Configuration File:** `sopify.config.yaml` (project root)
 
 **Knowledge Base Directory:** `.sopify-skills/`
+
+**Blueprint Path:** `.sopify-skills/blueprint/`
 
 **Plan Package Path:** `.sopify-skills/plan/YYYYMMDD_feature_name/`

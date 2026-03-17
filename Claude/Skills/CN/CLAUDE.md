@@ -201,24 +201,32 @@ workflow:
 **目录结构：**
 ```
 .sopify-skills/
-├── plan/                    # 当前方案
+├── blueprint/               # 项目级长期蓝图，默认进入版本管理
+│   ├── README.md            # 项目入口索引
+│   ├── background.md
+│   ├── design.md
+│   └── tasks.md
+├── plan/                    # 当前方案，默认忽略
 │   └── YYYYMMDD_feature/
-├── history/                 # 已完成方案
+├── history/                 # 已完成方案归档，默认忽略
 ├── wiki/                    # 项目文档
 │   ├── overview.md
 │   └── modules/
 ├── user/                    # 用户偏好与反馈
 │   ├── preferences.md
 │   └── feedback.jsonl
-└── project.md               # 技术约定
+├── project.md               # 技术约定
+└── replay/                  # 可选回放能力，默认忽略
 ```
 
 ### A6 | 生命周期管理
 
 ```yaml
+首次触发: 真实项目仓库至少创建 .sopify-skills/blueprint/README.md
+首次进入方案流: 补齐 .sopify-skills/blueprint/background.md / design.md / tasks.md
 方案创建: .sopify-skills/plan/YYYYMMDD_feature_name/
-开发完成: 迁移至 .sopify-skills/history/YYYY-MM/
-索引更新: .sopify-skills/history/index.md
+任务收口: 刷新 blueprint README 托管区块，并在需要时更新深层 blueprint
+准备交付验证: 迁移至 .sopify-skills/history/YYYY-MM/ 并更新 index.md
 ```
 
 ---
@@ -431,5 +439,7 @@ scripts/model_compare_runtime.py             # ~compare 的运行时实现，不
 **配置文件：** `sopify.config.yaml` (项目根目录)
 
 **知识库目录：** `.sopify-skills/`
+
+**Blueprint 路径：** `.sopify-skills/blueprint/`
 
 **方案包路径：** `.sopify-skills/plan/YYYYMMDD_feature_name/`
