@@ -946,6 +946,7 @@ def _decision_pending_route(decision: RouteDecision, *, reason: str) -> RouteDec
         capture_mode=decision.capture_mode,
         runtime_skill_id=None,
         active_run_action="inspect_decision",
+        artifacts=decision.artifacts,
     )
 
 
@@ -968,6 +969,7 @@ def _execution_confirm_pending_route(
         capture_mode=decision.capture_mode,
         runtime_skill_id=None,
         active_run_action=active_run_action,
+        artifacts=decision.artifacts,
     )
 
 
@@ -985,6 +987,7 @@ def _exec_plan_unavailable_route(decision: RouteDecision, *, reason: str) -> Rou
         capture_mode=decision.capture_mode,
         runtime_skill_id=None,
         active_run_action="inspect_exec_recovery",
+        artifacts=decision.artifacts,
     )
 
 
@@ -1002,6 +1005,7 @@ def _clarification_pending_route(decision: RouteDecision, *, reason: str) -> Rou
         capture_mode=decision.capture_mode,
         runtime_skill_id=None,
         active_run_action="inspect_clarification",
+        artifacts=decision.artifacts,
     )
 
 
@@ -1209,6 +1213,7 @@ def _apply_execution_gate_to_plan(
             should_recover_context=False,
             should_create_plan=False,
             capture_mode=decision.capture_mode,
+            artifacts=decision.artifacts,
         ),
         plan_artifact,
         notes,

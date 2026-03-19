@@ -6,6 +6,8 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-19.183617] - 2026-03-19
+
 ### Scope
 
 - Current minimal published runtime slice: `runtime-backed ~go plan`

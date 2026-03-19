@@ -34,8 +34,35 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Check builtin catalog drift
+        run: |
+          tmp="$(mktemp)"
+          python3 scripts/generate-builtin-catalog.py --output "$tmp" >/dev/null
+          python3 - runtime/builtin_catalog.generated.json "$tmp" <<'PY'
+          import difflib
+          import json
+          from pathlib import Path
+          import sys
+
+          def normalize(path_str: str) -> list[str]:
+              payload = json.loads(Path(path_str).read_text(encoding="utf-8"))
+              payload.pop("generated_at", None)
+              return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True).splitlines()
+
+          left_path, right_path = sys.argv[1], sys.argv[2]
+          left = normalize(left_path)
+          right = normalize(right_path)
+          if left != right:
+              for line in difflib.unified_diff(left, right, fromfile=left_path, tofile=right_path, lineterm=""):
+                  print(line)
+              raise SystemExit(1)
+          PY
+
       - name: Run runtime unit tests
         run: python3 -m unittest tests/test_runtime.py tests/test_installer.py
 
       - name: Run runtime smoke check
         run: bash scripts/check-runtime-smoke.sh
+
+      - name: Run skill eval quality gate
+        run: python3 scripts/check-skill-eval-gate.py

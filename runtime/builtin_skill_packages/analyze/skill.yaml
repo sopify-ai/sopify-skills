@@ -1,0 +1,22 @@
+schema_version: "1"
+id: analyze
+mode: workflow
+names:
+  zh-CN: analyze
+  en-US: analyze
+descriptions:
+  zh-CN: 需求分析阶段详细规则；用于需求评分、追问与范围判断。
+  en-US: Detailed requirements-analysis rules for scoring, clarification, and scope checks.
+handoff_kind: analysis
+contract_version: "1"
+supports_routes:
+  - workflow
+  - plan_only
+tools:
+  - read
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 
 from .models import SkillMeta
 
@@ -14,6 +15,7 @@ _LANGUAGE_DIRS = {
     "zh-CN": ("CN", "EN"),
     "en-US": ("EN", "CN"),
 }
+_GENERATED_CATALOG_PATH = Path("runtime") / "builtin_catalog.generated.json"
 
 
 @dataclass(frozen=True)
@@ -29,6 +31,12 @@ class _BuiltinSkillSpec:
     supports_routes: tuple[str, ...] = ()
     triggers: tuple[str, ...] = ()
     metadata: Mapping[str, object] = field(default_factory=dict)
+    tools: tuple[str, ...] = ()
+    disallowed_tools: tuple[str, ...] = ()
+    allowed_paths: tuple[str, ...] = ()
+    requires_network: bool = False
+    host_support: tuple[str, ...] = ()
+    permission_mode: str = "default"
 
 
 _BUILTIN_SPECS: tuple[_BuiltinSkillSpec, ...] = (
@@ -93,6 +101,12 @@ _BUILTIN_SPECS: tuple[_BuiltinSkillSpec, ...] = (
         handoff_kind="compare",
         supports_routes=("compare",),
         triggers=("~compare", "对比分析：", "compare:"),
+        tools=("read", "exec", "network"),
+        disallowed_tools=("write",),
+        allowed_paths=(".",),
+        requires_network=True,
+        host_support=("codex", "claude"),
+        permission_mode="dual",
     ),
     _BuiltinSkillSpec(
         skill_id="workflow-learning",
@@ -110,8 +124,9 @@ _BUILTIN_SPECS: tuple[_BuiltinSkillSpec, ...] = (
 
 def load_builtin_skills(*, repo_root: Path, language: str) -> tuple[SkillMeta, ...]:
     """Build builtin skill metadata without scanning bundled skill directories."""
+    specs = _load_generated_specs(repo_root) or _BUILTIN_SPECS
     skills: list[SkillMeta] = []
-    for spec in _BUILTIN_SPECS:
+    for spec in specs:
         runtime_entry = _resolve_runtime_entry(repo_root, spec.runtime_entry)
         entry_kind = spec.entry_kind if runtime_entry is not None else None
         path = _resolve_instruction_path(repo_root, language, spec.skill_id)
@@ -133,9 +148,63 @@ def load_builtin_skills(*, repo_root: Path, language: str) -> tuple[SkillMeta, .
                 handoff_kind=spec.handoff_kind,
                 contract_version=spec.contract_version,
                 supports_routes=spec.supports_routes,
+                tools=spec.tools,
+                disallowed_tools=spec.disallowed_tools,
+                allowed_paths=spec.allowed_paths,
+                requires_network=spec.requires_network,
+                host_support=spec.host_support,
+                permission_mode=spec.permission_mode,
             )
         )
     return tuple(skills)
+
+
+def _load_generated_specs(repo_root: Path) -> tuple[_BuiltinSkillSpec, ...] | None:
+    catalog_path = repo_root / _GENERATED_CATALOG_PATH
+    if not catalog_path.is_file():
+        return None
+    try:
+        payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, Mapping):
+        return None
+    raw_skills = payload.get("skills")
+    if not isinstance(raw_skills, list):
+        return None
+    specs: list[_BuiltinSkillSpec] = []
+    for raw_skill in raw_skills:
+        if not isinstance(raw_skill, Mapping):
+            continue
+        skill_id = _string_or_none(raw_skill.get("id") or raw_skill.get("skill_id"))
+        if not skill_id:
+            continue
+        names = _mapping_of_strings(raw_skill.get("names"))
+        descriptions = _mapping_of_strings(raw_skill.get("descriptions"))
+        metadata = _mapping_of_objects(raw_skill.get("metadata"))
+        metadata.setdefault("catalog_generated", True)
+        specs.append(
+            _BuiltinSkillSpec(
+                skill_id=skill_id,
+                names=names or {"en-US": skill_id},
+                descriptions=descriptions or {"en-US": ""},
+                mode=_string_or_default(raw_skill.get("mode"), default="workflow"),
+                runtime_entry=_string_or_none(raw_skill.get("runtime_entry")),
+                entry_kind=_string_or_none(raw_skill.get("entry_kind")),
+                handoff_kind=_string_or_none(raw_skill.get("handoff_kind")),
+                contract_version=_string_or_default(raw_skill.get("contract_version"), default=_DEFAULT_CONTRACT_VERSION),
+                supports_routes=_string_tuple(raw_skill.get("supports_routes")),
+                triggers=_string_tuple(raw_skill.get("triggers")),
+                metadata=metadata,
+                tools=_string_tuple(raw_skill.get("tools")),
+                disallowed_tools=_string_tuple(raw_skill.get("disallowed_tools")),
+                allowed_paths=_string_tuple(raw_skill.get("allowed_paths")),
+                requires_network=_bool_or_default(raw_skill.get("requires_network"), default=False),
+                host_support=_string_tuple(raw_skill.get("host_support")),
+                permission_mode=_string_or_default(raw_skill.get("permission_mode"), default="default"),
+            )
+        )
+    return tuple(specs) if specs else None
 
 
 def _localized(values: Mapping[str, str], language: str, *, fallback: str) -> str:
@@ -166,3 +235,64 @@ def _resolve_instruction_path(repo_root: Path, language: str, skill_id: str) -> 
             return candidate.resolve()
     # Vendored bundles do not ship the builtin prompt docs; the catalog remains the local source of truth.
     return (repo_root / "runtime" / "builtin_catalog.py").resolve()
+
+
+def _mapping_of_strings(value: object) -> Mapping[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        key_text = _string_or_none(key)
+        item_text = _string_or_none(item)
+        if key_text and item_text:
+            normalized[key_text] = item_text
+    return normalized
+
+
+def _mapping_of_objects(value: object) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        return {}
+    normalized: dict[str, object] = {}
+    for key, item in value.items():
+        key_text = _string_or_none(key)
+        if key_text:
+            normalized[key_text] = item
+    return normalized
+
+
+def _bool_or_default(value: object, *, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _string_or_none(value: object) -> str | None:
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    return None
+
+
+def _string_or_default(value: object, *, default: str) -> str:
+    normalized = _string_or_none(value)
+    return normalized or default
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if isinstance(value, str):
+        normalized = value.strip()
+        return (normalized,) if normalized else ()
+    if isinstance(value, (list, tuple)):
+        normalized: list[str] = []
+        for item in value:
+            text = _string_or_none(item)
+            if text:
+                normalized.append(text)
+        return tuple(normalized)
+    return ()

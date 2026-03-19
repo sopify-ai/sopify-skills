@@ -14,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from runtime.config import ConfigError, load_runtime_config
+from runtime._yaml import load_yaml
 from runtime.checkpoint_materializer import materialize_checkpoint_request
 from runtime.checkpoint_request import (
     CHECKPOINT_REASON_MISSING_BUT_TRADEOFF_DETECTED,
@@ -41,6 +42,7 @@ from runtime.decision_bridge import (
 from runtime.decision_policy import match_decision_policy
 from runtime.decision_templates import CUSTOM_OPTION_ID, PRIMARY_OPTION_FIELD_ID, build_strategy_pick_template
 from runtime.engine import run_runtime
+from runtime.entry_guard import DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE
 from runtime.execution_gate import evaluate_execution_gate
 from runtime.handoff import build_runtime_handoff
 from runtime.kb import bootstrap_kb
@@ -55,6 +57,7 @@ from runtime.plan_orchestrator import (
 from runtime.replay import ReplayWriter, build_decision_replay_event
 from runtime.router import Router
 from runtime.skill_registry import SkillRegistry
+from runtime.skill_runner import SkillExecutionError, run_runtime_skill
 from runtime.state import StateStore, iso_now
 from runtime.models import (
     DecisionCheckpoint,
@@ -71,6 +74,7 @@ from runtime.models import (
     RouteDecision,
     RuntimeHandoff,
     RunState,
+    SkillMeta,
 )
 from scripts.model_compare_runtime import make_default_candidate
 
@@ -219,6 +223,12 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertEqual(config.brand, "sample-workspace-ai")
 
 
+class YamlLoaderTests(unittest.TestCase):
+    def test_quoted_list_item_with_colon_is_parsed_as_string(self) -> None:
+        payload = load_yaml('triggers:\n  - "~compare"\n  - "compare:"\n')
+        self.assertEqual(payload["triggers"], ["~compare", "compare:"])
+
+
 class RouterTests(unittest.TestCase):
     def test_route_classification_and_active_flow_intents(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -258,6 +268,63 @@ class RouterTests(unittest.TestCase):
             self.assertEqual(replay_route.route_name, "replay")
             self.assertEqual(compare_route.route_name, "compare")
             self.assertEqual(consult_route.route_name, "consult")
+
+    def test_consult_guard_for_process_semantics_forces_runtime_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("design 阶段现在怎么收口？", skills=skills)
+
+            self.assertEqual(route.route_name, "workflow")
+            self.assertTrue(route.should_create_plan)
+            self.assertEqual(
+                route.artifacts.get("entry_guard_reason_code"),
+                DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
+            )
+
+    def test_consult_guard_for_protected_plan_assets_forces_runtime_first(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify(
+                "你能解释下 .sopify-skills/plan/20260319_skill_standards_refactor/tasks.md 的当前状态吗？",
+                skills=skills,
+            )
+
+            self.assertEqual(route.route_name, "workflow")
+            self.assertIn("protected .sopify-skills/plan assets", route.reason)
+            self.assertEqual(
+                route.artifacts.get("entry_guard_reason_code"),
+                DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
+            )
+
+    def test_consult_guard_falls_back_when_tradeoff_or_long_term_split_detected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("长期契约上是继续手写 catalog 还是改成生成链？", skills=skills)
+
+            self.assertEqual(route.route_name, "workflow")
+            self.assertIn("tradeoff or long-term contract split", route.reason)
+            self.assertEqual(
+                route.artifacts.get("entry_guard_reason_code"),
+                DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
+            )
 
     def test_ready_plan_routes_continue_and_exec_into_execution_confirm(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -369,6 +436,165 @@ class RouterTests(unittest.TestCase):
             self.assertEqual(resumed.route_name, "decision_resume")
             self.assertEqual(resumed.active_run_action, "resume_submitted_decision")
 
+    def test_route_skill_resolution_prefers_declarative_supports_routes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            custom_skill = workspace / "skills" / "decision-helper"
+            custom_skill.mkdir(parents=True)
+            (custom_skill / "SKILL.md").write_text(
+                "---\nname: decision-helper\ndescription: custom pending decision helper\n---\n\n# decision-helper\n",
+                encoding="utf-8",
+            )
+            (custom_skill / "skill.yaml").write_text(
+                "id: decision-helper\n"
+                "mode: advisory\n"
+                "supports_routes:\n"
+                "  - decision_pending\n"
+                "  - decision_resume\n"
+                "metadata:\n"
+                "  priority: 1\n",
+                encoding="utf-8",
+            )
+
+            run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                user_home=user_home,
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+
+            blocked_exec = router.classify("~go exec", skills=skills)
+
+            self.assertEqual(blocked_exec.route_name, "decision_pending")
+            self.assertEqual(blocked_exec.candidate_skill_ids, ("decision-helper",))
+
+    def test_route_skill_resolution_falls_back_when_supports_routes_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            custom_skill = workspace / "skills" / "decision-helper"
+            custom_skill.mkdir(parents=True)
+            (custom_skill / "SKILL.md").write_text(
+                "---\nname: decision-helper\ndescription: custom helper without route metadata\n---\n\n# decision-helper\n",
+                encoding="utf-8",
+            )
+            (custom_skill / "skill.yaml").write_text(
+                "id: decision-helper\n"
+                "mode: advisory\n",
+                encoding="utf-8",
+            )
+
+            run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                user_home=user_home,
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+
+            blocked_exec = router.classify("~go exec", skills=skills)
+
+            self.assertEqual(blocked_exec.route_name, "decision_pending")
+            self.assertEqual(blocked_exec.candidate_skill_ids, ("design",))
+
+    def test_route_skill_resolution_prefers_workspace_declarative_workflow_over_builtin_order(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            custom_skill = workspace / ".agents" / "skills" / "custom-workflow"
+            custom_skill.mkdir(parents=True)
+            (custom_skill / "SKILL.md").write_text(
+                "---\nname: custom-workflow\ndescription: custom workflow helper\n---\n\n# custom-workflow\n",
+                encoding="utf-8",
+            )
+            (custom_skill / "skill.yaml").write_text(
+                "id: custom-workflow\n"
+                "mode: workflow\n"
+                "supports_routes:\n"
+                "  - workflow\n"
+                "metadata:\n"
+                "  priority: 1\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+
+            decision = router.classify("重构 runtime adapter 和 workflow 引擎", skills=skills)
+
+            self.assertEqual(decision.route_name, "workflow")
+            self.assertEqual(decision.candidate_skill_ids, ("custom-workflow", "analyze", "design", "develop"))
+
+    def test_runtime_skill_resolution_prefers_workspace_runtime_skill_over_builtin(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            custom_skill = workspace / ".agents" / "skills" / "custom-compare"
+            custom_skill.mkdir(parents=True)
+            (custom_skill / "SKILL.md").write_text(
+                "---\nname: custom-compare\ndescription: custom compare helper\n---\n\n# custom-compare\n",
+                encoding="utf-8",
+            )
+            (custom_skill / "skill.yaml").write_text(
+                "id: custom-compare\n"
+                "mode: runtime\n"
+                "runtime_entry: custom_runtime.py\n"
+                "supports_routes:\n"
+                "  - compare\n"
+                "host_support:\n"
+                "  - codex\n"
+                "permission_mode: dual\n"
+                "metadata:\n"
+                "  priority: 1\n",
+                encoding="utf-8",
+            )
+            (custom_skill / "custom_runtime.py").write_text(
+                "def run_skill(**kwargs):\n    return {'ok': True}\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+
+            decision = router.classify("~compare 对比 runtime 策略", skills=skills)
+
+            self.assertEqual(decision.route_name, "compare")
+            self.assertEqual(decision.candidate_skill_ids, ("custom-compare", "model-compare"))
+            self.assertEqual(decision.runtime_skill_id, "custom-compare")
+
+    def test_runtime_handoff_preserves_direct_edit_runtime_required_reason_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = run_runtime(
+                "design 阶段现在怎么收口？",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertIsNotNone(result.handoff)
+            assert result.handoff is not None
+            self.assertEqual(
+                result.handoff.artifacts.get("entry_guard_reason_code"),
+                DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
+            )
+
 
 class DecisionContractTests(unittest.TestCase):
     def test_decision_policy_keeps_current_planning_semantic_baseline(self) -> None:
@@ -458,6 +684,83 @@ class DecisionContractTests(unittest.TestCase):
         )
 
         self.assertIsNone(match_decision_policy(route))
+
+    def test_decision_policy_matches_four_standard_policy_choices(self) -> None:
+        cases = (
+            ("route->skill 声明式 resolver 还是继续硬编码 skill 绑定？", "skill_selection_policy_choice"),
+            ("权限执行主体走 host + runtime 双保险还是仅 runtime 自验？", "permission_enforcement_mode_choice"),
+            ("catalog 生成时机选构建期静态生成还是运行期动态生成？", "catalog_generation_timing_choice"),
+            ("eval SLO 阈值走严格阻断还是仅告警提示？", "eval_slo_threshold_choice"),
+        )
+        for request_text, expected_policy_id in cases:
+            with self.subTest(policy_id=expected_policy_id):
+                route = RouteDecision(
+                    route_name="workflow",
+                    request_text=request_text,
+                    reason="test",
+                    complexity="complex",
+                    plan_level="standard",
+                )
+
+                match = match_decision_policy(route)
+
+                self.assertIsNotNone(match)
+                assert match is not None
+                self.assertEqual(match.policy_id, expected_policy_id)
+                self.assertEqual(match.template_id, "strategy_pick")
+                self.assertEqual(len(match.option_texts), 2)
+
+    def test_decision_policy_does_not_trigger_standard_policy_without_tradeoff_split(self) -> None:
+        cases = (
+            "请说明当前 skill 选择策略",
+            "请说明权限执行策略",
+            "请说明 catalog 生成策略",
+            "请说明 eval SLO 阈值策略",
+        )
+        for request_text in cases:
+            with self.subTest(request_text=request_text):
+                route = RouteDecision(
+                    route_name="workflow",
+                    request_text=request_text,
+                    reason="test",
+                    complexity="complex",
+                    plan_level="standard",
+                )
+                self.assertIsNone(match_decision_policy(route))
+
+    def test_decision_policy_honors_explicit_standard_policy_id_from_artifacts(self) -> None:
+        route = RouteDecision(
+            route_name="workflow",
+            request_text="请确认策略方向",
+            reason="test",
+            complexity="complex",
+            plan_level="standard",
+            artifacts={
+                "decision_policy_id": "catalog_generation_timing_choice",
+                "decision_candidates": [
+                    {
+                        "id": "build_time",
+                        "title": "构建期静态生成",
+                        "summary": "发布时生成 catalog。",
+                        "tradeoffs": ["发布流水线增加一次生成步骤"],
+                    },
+                    {
+                        "id": "runtime_time",
+                        "title": "运行期动态生成",
+                        "summary": "按需动态构建 catalog。",
+                        "tradeoffs": ["运行期开销更高"],
+                    },
+                ],
+            },
+        )
+
+        match = match_decision_policy(route)
+
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertEqual(match.policy_id, "catalog_generation_timing_choice")
+        self.assertEqual(match.trigger_reason, "explicit_standard_policy_id")
+        self.assertEqual(match.option_texts, ("构建期静态生成", "运行期动态生成"))
 
     def test_strategy_pick_template_supports_custom_and_constraint_fields(self) -> None:
         rendered = build_strategy_pick_template(
@@ -1387,6 +1690,18 @@ class ReplayWriterTests(unittest.TestCase):
 
 
 class SkillRegistryTests(unittest.TestCase):
+    def _write_skill(self, root: Path, *, skill_id: str, description: str, mode: str = "advisory") -> None:
+        skill_dir = root / skill_id
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {skill_id}\ndescription: {description}\n---\n\n# {skill_id}\n",
+            encoding="utf-8",
+        )
+        (skill_dir / "skill.yaml").write_text(
+            f"id: {skill_id}\nmode: {mode}\n",
+            encoding="utf-8",
+        )
+
     def test_skill_registry_discovers_builtin_and_project_skills(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -1412,6 +1727,11 @@ class SkillRegistryTests(unittest.TestCase):
             self.assertEqual(model_compare.entry_kind, "python")
             self.assertEqual(model_compare.handoff_kind, "compare")
             self.assertEqual(model_compare.supports_routes, ("compare",))
+            self.assertEqual(model_compare.permission_mode, "dual")
+            self.assertTrue(model_compare.requires_network)
+            self.assertIn("codex", model_compare.host_support)
+            self.assertIn("read", model_compare.tools)
+            self.assertIn("network", model_compare.tools)
 
     def test_skill_registry_builtin_catalog_does_not_require_builtin_skill_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1443,6 +1763,46 @@ class SkillRegistryTests(unittest.TestCase):
             self.assertEqual(model_compare.source, "builtin")
             self.assertEqual(model_compare.runtime_entry, (bundle_root / "scripts" / "model_compare_runtime.py").resolve())
             self.assertEqual(model_compare.path, (bundle_root / "runtime" / "builtin_catalog.py").resolve())
+
+    def test_skill_registry_prefers_generated_builtin_catalog_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            repo_root = temp_root / "repo"
+            workspace.mkdir()
+            (repo_root / "runtime").mkdir(parents=True)
+            (repo_root / "runtime" / "builtin_catalog.py").write_text("# placeholder\n", encoding="utf-8")
+            (repo_root / "runtime" / "builtin_catalog.generated.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1",
+                        "generated_at": "2026-03-19T00:00:00+00:00",
+                        "skills": [
+                            {
+                                "id": "generated-only",
+                                "names": {"en-US": "generated-only", "zh-CN": "generated-only"},
+                                "descriptions": {"en-US": "generated", "zh-CN": "generated"},
+                                "mode": "advisory",
+                                "supports_routes": ["workflow"],
+                                "permission_mode": "default",
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, repo_root=repo_root, user_home=workspace / "home").discover()
+            skill_ids = {skill.skill_id for skill in skills}
+            self.assertIn("generated-only", skill_ids)
+            generated = next(skill for skill in skills if skill.skill_id == "generated-only")
+            self.assertEqual(generated.description, "generated")
+            self.assertEqual(generated.supports_routes, ("workflow",))
+            self.assertEqual(generated.permission_mode, "default")
 
     def test_skill_registry_does_not_override_builtin_without_explicit_flag(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1487,6 +1847,258 @@ class SkillRegistryTests(unittest.TestCase):
             self.assertEqual(analyze.description, "local override")
             self.assertTrue(analyze.metadata.get("override_builtin"))
             self.assertEqual(analyze.supports_routes, ("workflow",))
+
+    def test_skill_registry_parses_permission_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            project_skill = workspace / "skills" / "permission-demo"
+            project_skill.mkdir(parents=True)
+            (project_skill / "SKILL.md").write_text(
+                "---\nname: permission-demo\ndescription: local permission skill\n---\n\n# local\n",
+                encoding="utf-8",
+            )
+            (project_skill / "skill.yaml").write_text(
+                "id: permission-demo\n"
+                "mode: runtime\n"
+                "runtime_entry: local_runtime.py\n"
+                "tools:\n"
+                "  - read\n"
+                "  - exec\n"
+                "disallowed_tools:\n"
+                "  - write\n"
+                "allowed_paths:\n"
+                "  - .\n"
+                "requires_network: true\n"
+                "host_support:\n"
+                "  - codex\n"
+                "permission_mode: dual\n",
+                encoding="utf-8",
+            )
+            (project_skill / "local_runtime.py").write_text(
+                "def run_skill(**kwargs):\n    return {'ok': True}\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=workspace / "home", host_name="codex").discover()
+            permission_skill = next(skill for skill in skills if skill.skill_id == "permission-demo")
+
+            self.assertEqual(permission_skill.tools, ("read", "exec"))
+            self.assertEqual(permission_skill.disallowed_tools, ("write",))
+            self.assertEqual(permission_skill.allowed_paths, (".",))
+            self.assertTrue(permission_skill.requires_network)
+            self.assertEqual(permission_skill.host_support, ("codex",))
+            self.assertEqual(permission_skill.permission_mode, "dual")
+
+    def test_skill_registry_host_support_fail_closed_when_host_not_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            project_skill = workspace / "skills" / "host-locked"
+            project_skill.mkdir(parents=True)
+            (project_skill / "SKILL.md").write_text(
+                "---\nname: host-locked\ndescription: host locked skill\n---\n\n# local\n",
+                encoding="utf-8",
+            )
+            (project_skill / "skill.yaml").write_text(
+                "id: host-locked\n"
+                "mode: advisory\n"
+                "host_support:\n"
+                "  - claude\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=workspace / "home", host_name="codex").discover()
+            skill_ids = {skill.skill_id for skill in skills}
+            self.assertNotIn("host-locked", skill_ids)
+
+    def test_skill_registry_invalid_permission_mode_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            project_skill = workspace / "skills" / "invalid-permission"
+            project_skill.mkdir(parents=True)
+            (project_skill / "SKILL.md").write_text(
+                "---\nname: invalid-permission\ndescription: invalid permission mode\n---\n\n# local\n",
+                encoding="utf-8",
+            )
+            (project_skill / "skill.yaml").write_text(
+                "id: invalid-permission\n"
+                "mode: advisory\n"
+                "permission_mode: unsupported_mode\n",
+                encoding="utf-8",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=workspace / "home", host_name="codex").discover()
+            skill_ids = {skill.skill_id for skill in skills}
+            self.assertNotIn("invalid-permission", skill_ids)
+
+    def test_skill_registry_workspace_precedence_over_user_for_duplicate_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            self._write_skill(
+                workspace / ".agents" / "skills",
+                skill_id="shared-skill",
+                description="workspace-agents",
+            )
+            self._write_skill(
+                user_home / ".agents" / "skills",
+                skill_id="shared-skill",
+                description="user-agents",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+            shared = next(skill for skill in skills if skill.skill_id == "shared-skill")
+
+            self.assertEqual(shared.description, "workspace-agents")
+            self.assertEqual(shared.source, "workspace")
+
+    def test_skill_registry_workspace_alias_precedence_prefers_public_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            self._write_skill(
+                workspace / ".agents" / "skills",
+                skill_id="alias-priority",
+                description="from-agents",
+            )
+            self._write_skill(
+                workspace / ".gemini" / "skills",
+                skill_id="alias-priority",
+                description="from-gemini",
+            )
+            self._write_skill(
+                workspace / "skills",
+                skill_id="alias-priority",
+                description="from-project",
+            )
+            self._write_skill(
+                workspace / ".sopify-skills" / "skills",
+                skill_id="alias-priority",
+                description="from-legacy-workspace",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+            alias_skill = next(skill for skill in skills if skill.skill_id == "alias-priority")
+
+            self.assertEqual(alias_skill.description, "from-agents")
+            self.assertEqual(alias_skill.source, "workspace")
+
+    def test_skill_registry_user_alias_precedence_prefers_public_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            user_home = workspace / "home"
+            self._write_skill(
+                user_home / ".agents" / "skills",
+                skill_id="user-priority",
+                description="user-agents",
+            )
+            self._write_skill(
+                user_home / ".gemini" / "skills",
+                skill_id="user-priority",
+                description="user-gemini",
+            )
+            self._write_skill(
+                user_home / ".codex" / "skills",
+                skill_id="user-priority",
+                description="user-codex",
+            )
+            self._write_skill(
+                user_home / ".claude" / "skills",
+                skill_id="user-priority",
+                description="user-claude",
+            )
+            self._write_skill(
+                user_home / ".claude" / "skills",
+                skill_id="claude-only",
+                description="claude-only",
+            )
+
+            config = load_runtime_config(workspace)
+            skills = SkillRegistry(config, user_home=user_home).discover()
+            user_skill = next(skill for skill in skills if skill.skill_id == "user-priority")
+            claude_skill = next(skill for skill in skills if skill.skill_id == "claude-only")
+
+            self.assertEqual(user_skill.description, "user-agents")
+            self.assertEqual(user_skill.source, "user")
+            self.assertEqual(claude_skill.description, "claude-only")
+            self.assertEqual(claude_skill.source, "user")
+
+
+class SkillRunnerTests(unittest.TestCase):
+    def test_runtime_skill_runner_rejects_invalid_permission_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            runtime_entry = workspace / "skill_runtime.py"
+            runtime_entry.write_text(
+                "def run_skill(**kwargs):\n    return {'ok': True}\n",
+                encoding="utf-8",
+            )
+            skill = SkillMeta(
+                skill_id="runtime-demo",
+                name="runtime-demo",
+                description="runtime-demo",
+                path=runtime_entry,
+                source="project",
+                mode="runtime",
+                runtime_entry=runtime_entry,
+                permission_mode="unsupported_mode",
+            )
+
+            with self.assertRaisesRegex(SkillExecutionError, "Unsupported permission mode"):
+                run_runtime_skill(skill, payload={})
+
+    def test_runtime_skill_runner_rejects_host_not_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            runtime_entry = workspace / "skill_runtime.py"
+            runtime_entry.write_text(
+                "def run_skill(**kwargs):\n    return {'ok': True}\n",
+                encoding="utf-8",
+            )
+            skill = SkillMeta(
+                skill_id="runtime-demo",
+                name="runtime-demo",
+                description="runtime-demo",
+                path=runtime_entry,
+                source="project",
+                mode="runtime",
+                runtime_entry=runtime_entry,
+                host_support=("claude",),
+                permission_mode="dual",
+            )
+
+            with mock.patch.dict("os.environ", {"SOPIFY_HOST_NAME": "codex"}, clear=False):
+                with self.assertRaisesRegex(SkillExecutionError, "not allowed to execute runtime skill"):
+                    run_runtime_skill(skill, payload={})
+
+    def test_runtime_skill_runner_allows_supported_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            runtime_entry = workspace / "skill_runtime.py"
+            runtime_entry.write_text(
+                "def run_skill(**kwargs):\n    return {'ok': True, 'value': kwargs.get('value')}\n",
+                encoding="utf-8",
+            )
+            skill = SkillMeta(
+                skill_id="runtime-demo",
+                name="runtime-demo",
+                description="runtime-demo",
+                path=runtime_entry,
+                source="project",
+                mode="runtime",
+                runtime_entry=runtime_entry,
+                host_support=("codex",),
+                permission_mode="dual",
+            )
+
+            with mock.patch.dict("os.environ", {"SOPIFY_HOST_NAME": "codex"}, clear=False):
+                result = run_runtime_skill(skill, payload={"value": 7})
+            self.assertEqual(result["ok"], True)
+            self.assertEqual(result["value"], 7)
 
 
 class KnowledgeBaseBootstrapTests(unittest.TestCase):
@@ -2573,6 +3185,10 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(model_compare["runtime_entry"], "scripts/model_compare_runtime.py")
             self.assertEqual(model_compare["entry_kind"], "python")
             self.assertEqual(model_compare["supports_routes"], ["compare"])
+            self.assertEqual(model_compare["permission_mode"], "dual")
+            self.assertTrue(model_compare["requires_network"])
+            self.assertIn("codex", model_compare["host_support"])
+            self.assertIn("network", model_compare["tools"])
 
             runtime_script = bundle_root / "scripts" / "sopify_runtime.py"
             completed = subprocess.run(

@@ -1,5 +1,5 @@
 <!-- bootstrap: lang=en-US; encoding=UTF-8 -->
-<!-- SOPIFY_VERSION: 2026-02-13 -->
+<!-- SOPIFY_VERSION: 2026-03-19.183617 -->
 <!-- ARCHITECTURE: Adaptive Workflow + Layered Rules -->
 
 # Sopify (Sop AI) Skills - Adaptive AI Programming Assistant
@@ -453,8 +453,9 @@ scripts/develop_checkpoint_runtime.py        # internal callback helper for user
 scripts/decision_bridge_runtime.py           # internal host bridge helper for `confirm_decision`, with inspect / submit / prompt
 .sopify-runtime/scripts/decision_bridge_runtime.py # vendored decision bridge helper, without changing the default runtime entry
 scripts/model_compare_runtime.py             # runtime implementation for ~compare, not the default generic entry
-~/.claude/sopify/payload-manifest.json        # Claude global payload metadata used during workspace preflight
-~/.claude/sopify/helpers/bootstrap_workspace.py # Claude global helper used to bootstrap `.sopify-runtime/` into a workspace
+scripts/check-install-payload-bundle-smoke.py # maintainer smoke; verifies install-once + trigger-time bootstrap + unchanged default entry
+~/.claude/sopify/payload-manifest.json        # host global payload metadata used during workspace preflight
+~/.claude/sopify/helpers/bootstrap_workspace.py # host global helper used to bootstrap `.sopify-runtime/` into a workspace
 .sopify-runtime/manifest.json                # vendored bundle machine contract; hosts must read this first
 .sopify-skills/state/current_handoff.json    # structured handoff written by the runtime; hosts must read this first after execution
 .sopify-skills/state/current_run.json        # active run state; includes the current stage and execution_gate snapshot
@@ -462,7 +463,7 @@ scripts/model_compare_runtime.py             # runtime implementation for ~compa
 .sopify-skills/state/current_decision.json   # decision checkpoint fallback state; read when handoff lacks the full checkpoint
 ```
 
-Note: the default entry is `scripts/sopify_runtime.py`; when vendored, prefer `.sopify-runtime/manifest.json` to select the entry; if the workspace bundle is missing or incompatible, the host must preflight through `~/.claude/sopify/payload-manifest.json` and call `~/.claude/sopify/helpers/bootstrap_workspace.py` first; `go_plan_runtime.py` is only for plan-only; `~go finalize` has no dedicated helper and is still handled by the default runtime entry; after execution the host must read `.sopify-skills/state/current_handoff.json` before trusting `Next:`; if `required_host_action=answer_questions`, continue into `.sopify-skills/state/current_clarification.json`; if `required_host_action=confirm_decision`, first consume `current_handoff.json.artifacts.decision_checkpoint / decision_submission_state` and only fall back to `.sopify-skills/state/current_decision.json`; if `required_host_action=continue_host_develop` and implementation hits another user-facing branch, the host must route through `scripts/develop_checkpoint_runtime.py inspect|submit` (vendored: `.sopify-runtime/scripts/develop_checkpoint_runtime.py`) instead of ad-hoc questioning; the helper path, host hints, and minimum resume contract are exposed through `.sopify-runtime/manifest.json -> limits.develop_checkpoint_entry / limits.develop_checkpoint_hosts / limits.develop_resume_context_required_fields / limits.develop_resume_after_actions`; in the current documented scope, hosts may call `scripts/decision_bridge_runtime.py inspect` (vendored: `.sopify-runtime/scripts/decision_bridge_runtime.py`) and then write the normalized submission through `submit` or `prompt`; `~compare` still depends on a host-side dedicated bridge.
+Note: the default entry is `scripts/sopify_runtime.py`; when vendored, prefer `.sopify-runtime/manifest.json` to select the entry; if the workspace bundle is missing or incompatible, the host must preflight through `~/.claude/sopify/payload-manifest.json` and call `~/.claude/sopify/helpers/bootstrap_workspace.py` first; `go_plan_runtime.py` is only for plan-only; `~go finalize` has no dedicated helper and is still handled by the default runtime entry; after execution the host must read `.sopify-skills/state/current_handoff.json` before trusting `Next:`; if `required_host_action=answer_questions`, continue into `.sopify-skills/state/current_clarification.json`; if `required_host_action=confirm_decision`, first consume `current_handoff.json.artifacts.decision_checkpoint / decision_submission_state` and only fall back to `.sopify-skills/state/current_decision.json`; if `required_host_action=continue_host_develop` and implementation hits another user-facing branch, the host must route through `scripts/develop_checkpoint_runtime.py inspect|submit` (vendored: `.sopify-runtime/scripts/develop_checkpoint_runtime.py`) instead of ad-hoc questioning; the helper path, host hints, and minimum resume contract are exposed through `.sopify-runtime/manifest.json -> limits.develop_checkpoint_entry / limits.develop_checkpoint_hosts / limits.develop_resume_context_required_fields / limits.develop_resume_after_actions`; in the current documented scope, hosts may call `scripts/decision_bridge_runtime.py inspect` (vendored: `.sopify-runtime/scripts/decision_bridge_runtime.py`) and then write the normalized submission through `submit` or `prompt`; `~compare` still depends on a host-side dedicated bridge. Maintainers can recheck the three hard constraints with `python3 scripts/check-install-payload-bundle-smoke.py`.
 
 **Configuration File:** `sopify.config.yaml` (project root)
 

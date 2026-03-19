@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--02--13-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--19.183617-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration)
@@ -116,6 +116,25 @@ Notes:
 - when `answer_questions / confirm_decision / confirm_execute` is active, handoff now also carries a standardized `checkpoint_request`
 - builtin skill discovery is owned by `runtime/builtin_catalog.py`, so the bundle does not depend on shipping `Codex/Skills` or `Claude/Skills` directories
 - non-terminal routes now write `.sopify-skills/state/current_handoff.json`, and `Next:` is rendered from the handoff contract first
+
+### Hard-Constraint Recheck (2026-03-19)
+
+The following constraints were revalidated through an isolated smoke run:
+
+- the install flow still uses a single installer command, without a second manual runtime-prep step
+- the first project trigger still bootstraps `.sopify-runtime/` from the installed payload
+- the default main entry remains `scripts/sopify_runtime.py` / `.sopify-runtime/scripts/sopify_runtime.py`
+
+Verification command:
+
+```bash
+python3 scripts/check-install-payload-bundle-smoke.py \
+  --output-json /tmp/sopify-install-payload-bundle-smoke.json
+```
+
+Verification record:
+
+- [Closure Blueprint](./.sopify-skills/blueprint/skill-standards-refactor.md)
 
 ### First Use
 
@@ -471,6 +490,52 @@ Sub-skill change history is tracked separately from the repository-level changel
 - [workflow-learning Changelog (CN)](./Codex/Skills/CN/skills/sopify/workflow-learning/CHANGELOG.md)
 - [workflow-learning Changelog (EN)](./Codex/Skills/EN/skills/sopify/workflow-learning/CHANGELOG.md)
 
+## Skill Authoring (Layered Standard)
+
+Starting from `2026-03-19`, Sopify skills follow a layered package standard. In the current repo, `analyze/design/develop` have finished the prompt-layer pilot in Codex CN/EN, and Claude mirrors are produced by sync.
+
+Current repo layout (logical package):
+
+```text
+Codex/Skills/{CN,EN}/skills/sopify/<skill>/
+├── SKILL.md        # entry doc (activation + skeleton + boundaries)
+├── references/     # long-form rules
+├── assets/         # templates and examples
+└── scripts/        # deterministic logic
+
+runtime/builtin_skill_packages/<skill>/
+└── skill.yaml      # builtin machine metadata (routes/permissions/host_support)
+```
+
+Contract requirements:
+
+- `Codex/Skills/{CN,EN}` are the prompt-layer source of truth; `Claude/Skills/{CN,EN}` are mirrors only
+- `runtime/builtin_skill_packages/*/skill.yaml` is the builtin machine-metadata source of truth
+- Use `supports_routes` for declarative route binding first
+- Validate `skill.yaml` through `runtime/skill_schema.py`
+- Fail closed only on invalid `skill.yaml` schema / unsupported `host_support` / invalid runtime `permission_mode`
+- `tools / disallowed_tools / allowed_paths / requires_network` are declared today, but are not yet runtime-enforced
+- Treat builtin catalog as generated from `runtime/builtin_skill_packages/*/skill.yaml`, not manually edited
+
+Maintainer minimum checks:
+
+```bash
+bash scripts/sync-skills.sh
+bash scripts/check-skills-sync.sh
+bash scripts/check-version-consistency.sh
+python3 scripts/generate-builtin-catalog.py
+python3 scripts/check-skill-eval-gate.py
+python3 -m unittest tests.test_runtime -v
+```
+
+See full specs:
+
+- [Skill Authoring 规范（中文）](./docs/skill-authoring.md)
+- [Skill Authoring Guide (English)](./docs/skill-authoring.en.md)
+- [Closure Blueprint](./.sopify-skills/blueprint/skill-standards-refactor.md)
+- [Skill Eval Baseline](./evals/skill_eval_baseline.json)
+- [Skill Eval SLO](./evals/skill_eval_slo.json)
+
 ---
 
 ## Sync Mechanism (for maintainers)
@@ -478,7 +543,7 @@ Sub-skill change history is tracked separately from the repository-level changel
 To avoid drift between Codex/Claude and CN/EN skill files, use the built-in sync/check scripts:
 
 ```bash
-# 1) Sync Codex source-of-truth files to Claude mirror files
+# 1) Sync Codex prompt-layer source files to Claude mirror files
 bash scripts/sync-skills.sh
 
 # 2) Verify all four bundles are aligned
@@ -491,6 +556,7 @@ bash scripts/check-version-consistency.sh
 These scripts ignore Finder/Explorer noise files (`.DS_Store`, `Thumbs.db`) to avoid false drift reports.
 Before committing skill/rule updates, always run `sync -> check-skills-sync -> check-version-consistency`.
 CI (`.github/workflows/ci.yml`) runs the same gate on PR/Push, and uses `git diff --exit-code` to fail drift that requires sync.
+If you also changed `runtime/builtin_skill_packages/*/skill.yaml`, rerun catalog / eval / runtime tests as part of the same check path.
 
 ---
 
@@ -588,6 +654,12 @@ sopify-skills/
 │       └── EN/                 # English version
 ├── Codex/
 │   └── Skills/                 # Codex CLI version
+├── runtime/
+│   ├── builtin_skill_packages/ # builtin skill machine metadata source
+│   └── builtin_catalog.generated.json
+├── docs/
+│   ├── skill-authoring.md
+│   └── skill-authoring.en.md
 ├── examples/
 │   └── sopify.config.yaml      # Config example
 ├── README.md                   # Chinese docs
@@ -637,11 +709,14 @@ Delete (or clear) `.sopify-skills/user/preferences.md` to reset long-term prefer
 
 ### Q: When should I run sync scripts?
 
-After editing rule files under `Codex/Skills/{CN,EN}`, run:
+After editing prompt-layer files under `Codex/Skills/{CN,EN}` or machine metadata under `runtime/builtin_skill_packages/*/skill.yaml`, the safe minimum is:
 ```bash
 bash scripts/sync-skills.sh
 bash scripts/check-skills-sync.sh
 bash scripts/check-version-consistency.sh
+python3 scripts/generate-builtin-catalog.py
+python3 scripts/check-skill-eval-gate.py
+python3 -m unittest tests.test_runtime -v
 ```
 If any check fails, fix the mismatch before committing.
 

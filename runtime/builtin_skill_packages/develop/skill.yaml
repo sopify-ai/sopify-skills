@@ -1,0 +1,26 @@
+schema_version: "1"
+id: develop
+mode: workflow
+names:
+  zh-CN: develop
+  en-US: develop
+descriptions:
+  zh-CN: 开发实施阶段详细规则；用于代码执行、验证与知识库同步。
+  en-US: Detailed implementation-stage rules for code execution, validation, and KB sync.
+handoff_kind: develop
+contract_version: "1"
+supports_routes:
+  - workflow
+  - light_iterate
+  - quick_fix
+  - resume_active
+  - exec_plan
+tools:
+  - read
+  - write
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

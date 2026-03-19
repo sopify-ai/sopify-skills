@@ -1,224 +1,42 @@
 ---
 name: develop
-description: Development phase rules; read when entering development; includes code execution, KB sync, plan package migration
+description: Develop phase entry; routes task execution, state updates, KB sync, and plan close-out through references/assets/scripts.
 ---
 
-# Development - Detailed Rules
+# Develop (Entry)
 
-**Goal:** Execute development per task list, sync knowledge base, migrate plan package
+## When to activate
 
-**Execution Flow:**
-```
-1. Read task list
-2. Execute tasks in order
-3. Update task status
-4. Sync knowledge base
-5. Migrate plan package to history/
-6. Output results
-```
+- Entering the implementation phase (`workflow` / `light_iterate` / `quick_fix` / `exec_plan`).
+- Need to execute the task list, update state, and converge the delivery result.
 
----
+## Execution skeleton
 
-## Step 1: Read Task List
+1. Read the active plan tasks (`tasks.md` or light `plan.md`).
+2. Extract pending tasks and execute them in numbered order.
+3. Update task markers after each step (`[ ] -> [x] / [-] / [!]`).
+4. Sync KB files and conservative preference / feedback records.
+5. Move completed plans into `history/` and update the index.
+6. Render the matching result template.
 
-```yaml
-Source: .sopify-skills/plan/{current_plan}/tasks.md
-        or .sopify-skills/plan/{current_plan}/plan.md (light level)
+## Resource navigation
 
-Parse: Extract all [ ] pending tasks
-Order: Execute in task number order
-Dependencies: Check inter-task dependencies
-```
+- Long rules: `references/develop-rules.md`
+- Output templates: `assets/*.md`
+- Task extraction script: `scripts/extract_pending_tasks.py`
 
----
+## Deterministic logic first
 
-## Step 2: Execute Tasks
+Use the script when task extraction must be auditable:
 
-**Execution Principles:**
-```yaml
-For each task:
-  1. Locate target file
-  2. Understand current code
-  3. Implement changes
-  4. Verify correctness
-  5. Update task status to [x]
-
-Security checks:
-  - Don't introduce vulnerabilities (XSS, SQL injection, etc.)
-  - Don't break existing functionality
-  - Maintain consistent code style
+```bash
+python3 Codex/Skills/EN/skills/sopify/develop/scripts/extract_pending_tasks.py \
+  --tasks-file .sopify-skills/plan/<plan>/tasks.md
 ```
 
-**Task Status Updates:**
-```yaml
-Successfully completed: [ ] → [x]
-Skipped (not needed): [ ] → [-]
-Blocked (needs external handling): [ ] → [!]
-```
+The script returns JSON with pending tasks, status counts, and execution order.
 
----
+## Boundaries
 
-## Step 3: Knowledge Base Sync
-
-**Sync Timing:**
-- After completing each module's tasks
-- At the end of development phase
-
-**Sync Content:**
-```yaml
-wiki/modules/{module}.md:
-  - Update module responsibility description (if changed)
-  - Add new API interface documentation
-  - Update data model descriptions
-
-wiki/overview.md:
-  - Update module index (if new modules)
-  - Update quick links
-
-project.md:
-  - Update technical conventions (if changed)
-
-user/preferences.md:
-  - Append or update only when user explicitly states long-term preference
-  - Keep preferences structured, reusable, and traceable
-
-user/feedback.jsonl:
-  - Record key feedback events (time, context, raw phrasing, whether promoted to long-term preference)
-```
-
-**Preference Write Conditions (Conservative Learning):**
-```yaml
-Allowed:
-  - User explicitly states long-term preference (e.g. "use this by default going forward")
-
-Disallowed:
-  - One-off instructions
-  - Guesswork from incomplete context
-  - Generalized conclusions unrelated to current task
-```
-
----
-
-## Step 4: Plan Package Migration
-
-**Migration Path:**
-```
-.sopify-skills/plan/YYYYMMDD_feature/
-    ↓ Move to
-.sopify-skills/history/YYYY-MM/YYYYMMDD_feature/
-```
-
-**Update Index:**
-
-Add record to `.sopify-skills/history/index.md`:
-
-```markdown
-| YYYYMMDDHHMM | {feature name} | {type} | ✓ Completed | [link](YYYY-MM/YYYYMMDD_feature/) |
-```
-
----
-
-## Step 5: Output Format
-
-**Full Success:**
-```
-[{BRAND_NAME}] Development ✓
-
-Completed: {N}/{N} tasks
-Tests: passed
-
----
-Changes: {N} files
-  - src/xxx.vue
-  - src/xxx.ts
-  - .sopify-skills/wiki/modules/xxx.md
-  - .sopify-skills/history/...
-
-Next: Please verify the functionality
-```
-
-**Partial Success:**
-```
-[{BRAND_NAME}] Development !
-
-Completed: {M}/{N} tasks
-Blocked: {K} items
-
-Blocked tasks:
-  - [!] 2.3 {task description} - {block reason}
-
----
-Changes: {N} files
-  - ...
-
-Next: Resume the current flow in the host session after resolving the blockers
-```
-
-**Quick Fix Mode (simple tasks executed directly):**
-```
-[{BRAND_NAME}] Quick Fix ✓
-
-Fixed: {one-line description}
-
----
-Changes: {N} files
-  - {file1}
-  - {file2}
-
-Next: Please verify the fix
-```
-
----
-
-## Special Case Handling
-
-### Execution Interruption
-
-```yaml
-Situation: User interruption or system error
-Handling:
-  1. Save current progress to tasks.md
-  2. Mark completed tasks as [x]
-  3. Keep current task as [ ]
-  4. Output interruption summary
-Recovery: Resume through the host session by default; use ~go exec only as an advanced recovery entry when an active plan or recovery state already exists
-```
-
-### Task Failure
-
-```yaml
-Situation: A task cannot be completed
-Handling:
-  1. Mark as [!] with reason
-  2. Try to continue subsequent independent tasks
-  3. Output failure details
-```
-
-### Rollback Request
-
-```yaml
-Situation: User requests rollback
-Handling:
-  1. Use git to rollback changes
-  2. Keep plan package in plan/ (don't migrate)
-  3. Output rollback confirmation
-```
-
----
-
-## Verification Checklist
-
-**Code Quality:**
-- [ ] Code style follows project conventions
-- [ ] No TypeScript/ESLint errors
-- [ ] No obvious performance issues
-
-**Functional Completeness:**
-- [ ] All tasks executed
-- [ ] Edge cases handled
-- [ ] Error handling complete
-
-**Knowledge Base:**
-- [ ] Related docs updated
-- [ ] Plan package migrated
-- [ ] Index updated
+- This skill executes and closes out work; it does not redefine the plan structure.
+- Rollback remains an explicit user action and must keep a traceable record.

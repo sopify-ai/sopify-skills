@@ -1,0 +1,20 @@
+schema_version: "1"
+id: kb
+mode: workflow
+names:
+  zh-CN: kb
+  en-US: kb
+descriptions:
+  zh-CN: 知识库管理技能；用于初始化、更新与同步知识库。
+  en-US: Knowledge-base management skill for bootstrap, updates, and synchronization.
+handoff_kind: kb
+contract_version: "1"
+tools:
+  - read
+  - write
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

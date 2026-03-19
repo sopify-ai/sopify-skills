@@ -11,3 +11,5 @@ __pycache__/
 .sopify-skills/replay/
 .sopify-skills/plan/
 .sopify-skills/history/
+
+evals/skill_eval_report.json

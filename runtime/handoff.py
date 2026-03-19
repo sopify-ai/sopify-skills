@@ -167,9 +167,15 @@ def _collect_handoff_artifacts(
     artifacts: dict[str, Any] = {}
     entry_guard = build_entry_guard_contract(required_host_action=required_host_action)
     artifacts["entry_guard"] = entry_guard
+    explicit_guard_reason_code = str(decision.artifacts.get("entry_guard_reason_code") or "").strip()
     guard_reason_code = str(entry_guard.get("reason_code") or "").strip()
-    if guard_reason_code:
+    if explicit_guard_reason_code:
+        artifacts["entry_guard_reason_code"] = explicit_guard_reason_code
+    elif guard_reason_code:
         artifacts["entry_guard_reason_code"] = guard_reason_code
+    direct_edit_guard_trigger = str(decision.artifacts.get("direct_edit_guard_trigger") or "").strip()
+    if direct_edit_guard_trigger:
+        artifacts["direct_edit_guard_trigger"] = direct_edit_guard_trigger
     execution_summary_payload = None
     if current_run is not None:
         artifacts["run_stage"] = current_run.stage

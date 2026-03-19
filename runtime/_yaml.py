@@ -159,6 +159,12 @@ def _parse_list(lines: Sequence[_Line], index: int, indent: int) -> Tuple[list[A
 
 
 def _looks_like_mapping_entry(text: str) -> bool:
+    stripped = text.strip()
+    if len(stripped) >= 2 and (
+        (stripped.startswith('"') and stripped.endswith('"'))
+        or (stripped.startswith("'") and stripped.endswith("'"))
+    ):
+        return False
     if ":" not in text:
         return False
     key, _ = text.split(":", 1)

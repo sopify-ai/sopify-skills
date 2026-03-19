@@ -292,6 +292,12 @@ def _serialize_builtin_skill(*, skill: Any, bundle_root: Path) -> Mapping[str, A
         "handoff_kind": skill.handoff_kind,
         "contract_version": skill.contract_version,
         "supports_routes": list(skill.supports_routes),
+        "tools": list(skill.tools),
+        "disallowed_tools": list(skill.disallowed_tools),
+        "allowed_paths": list(skill.allowed_paths),
+        "requires_network": bool(skill.requires_network),
+        "host_support": list(skill.host_support),
+        "permission_mode": skill.permission_mode,
     }
 
 

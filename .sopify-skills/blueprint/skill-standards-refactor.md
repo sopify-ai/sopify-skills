@@ -1,209 +1,249 @@
 # Skill 标准对齐蓝图
 
-状态: 待评审
+状态: 已收口（2026-03-19 决议已落地）
 创建日期: 2026-03-19
 定位: 面向 `Anthropic Agent Skills + Gemini CLI Agent Skills` 的专项重构蓝图
 
-## 背景
+## 一页结论
 
-过去这个仓库主要沿着 `runtime control plane + host prompt layer + installer` 的方向演进，工程化程度已经不低，但它对“skill 本身应该如何被发现、加载、约束、评测”这件事并没有形成与最新官方规范一致的分层。[A1][A2][A3][A4][G1][G2][G3]
+### 可以学（直接吸收）
 
-这带来一个根本问题：
+1. 渐进披露：metadata 预加载，激活后再读取正文与资源。[A1][A2][A3]
+2. skill package 分层：`SKILL.md + scripts/references/assets`。[G2]
+3. 发现分层：`workspace > user > extension/bundled`，兼容 `.agents/skills`。[G1]
+4. 权限与宿主能力显式声明；当前仅 `schema + host_support + permission_mode` fail-closed。[A4][G3]
+5. 评测前置：先建 eval，再大规模重构。[A3]
 
-- 仓库现在更像“runtime 平台”，而不是“可移植 skill 标准实现”
-- `SKILL.md` 更多是宿主提示层文档，不是机器契约的单一事实源
-- skill 包结构、发现层级、权限边界、激活方式、评测方式，都和官方最新方向存在偏差
+### 值得改（优先级）
 
-## 当前结论
+1. `P0` discovery tier 扩展与 precedence 固化
+2. `P0` skill package 结构试点（`analyze/design/develop`）
+3. `P0` source-of-truth 单向生成链（package -> catalog）
+4. `P0` 权限最小字段集与执行约束
+5. `P0` skill authoring eval baseline
+6. `P1` host abstraction / extension tier / observability
 
-### 1. 发现层不够通用
+## 当前收口结果（2026-03-19）
 
-Anthropic 与 Gemini 都把“轻 metadata 预加载 + 需要时再激活/读取正文”当成默认模型。[A1][A2][G1][G3]
+1. `P0` discovery tier 与 precedence 已落地，声明式 route 绑定优先于 legacy fallback。
+2. `analyze/design/develop` 已完成 Codex CN/EN prompt-layer 分层试点，Claude 侧通过 sync 镜像。
+3. builtin machine metadata 已收敛到 `runtime/builtin_skill_packages/*/skill.yaml`，catalog 走单向生成链并有 drift gate。
+4. 权限边界当前只对 `skill.yaml` schema、`host_support`、runtime `permission_mode` fail-closed；`tools / disallowed_tools / allowed_paths / requires_network` 先作为声明字段保留。
+5. eval baseline / SLO / gate / smoke 已进入仓库，并接入 preflight / CI。
+6. release automation 不再单列为“是否保留 release hook”的待决项；仓库提供 `commit-msg` hook，启用后由 commit 路径触发 shell preflight + version sync。
 
-Gemini 进一步明确了三层发现模型：
+## 背景与问题
 
-- workspace skills
-- user skills
-- extension skills
+当前仓库在 runtime control-plane、entry guard、state/handoff 方面已经较完整，但 `skill package` 仍不是第一事实源，导致“能运行”与“可移植、可审查、可演进”之间存在结构性差距。[A1][A2][A3][A4][G1][G2][G3]
 
-并且把 `.agents/skills` 作为跨 agent 工具兼容的通用 alias。[G1]
+核心问题：
 
-相对地，当前仓库的 skill 发现还偏 `Codex` 私有实现，跨宿主抽象不够完整。这会直接限制后续接入 Gemini 或更通用的 agent runtime。
+1. 发现层偏私有路径，跨宿主兼容不足
+2. `SKILL.md` 偏重，目录未充分承接渐进披露
+3. catalog/router/runtime 三处分散持有语义，source-of-truth 倒置
+4. 权限边界缺少正式元数据契约
+5. 缺少 skill authoring 维度的回归评测
 
-### 2. Skill 本体过重，渐进披露没有真正落到目录结构
+## 目标（重构后应达到）
 
-Anthropic 明确强调 progressive disclosure：启动时只加载 `name` / `description`，触发后再读 `SKILL.md`，更细节的材料继续放到额外文件中按需读取。[A1][A2]
+### 目标 1: 标准化 skill package
 
-Anthropic 官方还给了比较明确的约束：
+统一逻辑模型：
 
-- `SKILL.md` body 最好控制在 500 行以内
-- 接近上限时应拆到额外文件
-- 引用层级不要太深
-- 长内容应放到 reference / examples / scripts 这类结构里。[A3]
+```text
+Codex/Skills/{CN,EN}/skills/sopify/my-skill/
+├── SKILL.md
+├── scripts/
+├── references/
+└── assets/
 
-Gemini 也已经把推荐目录结构写得很明确：
+runtime/builtin_skill_packages/my-skill/
+└── skill.yaml
+```
 
-- `SKILL.md`
-- `scripts/`
-- `references/`
-- `assets/` [G2]
+约束：
 
-当前仓库虽然已经使用 `SKILL.md`，但大多数 skill 仍是“大而全单文件”，没有把长模板、参考资料、确定性执行逻辑拆出去。这会让 skill 激活后的上下文密度过高，也会让维护越来越困难。
-
-### 3. Source of truth 倒置
-
-官方语义里，skill package 本身应当是可移植能力单元：目录、frontmatter、正文、附属资源共同构成可复用 skill。[A1][A2][G2]
-
-当前仓库则更接近：
-
-- Python `builtin_catalog` 才是机器真相
-- `SKILL.md` 主要是人类说明和宿主提示材料
-- router / runtime / catalog 三处共同决定 skill 语义
-
-这种设计短期便于收口 runtime，但长期会伤害：
-
-- skill 的可移植性
-- skill 的可组合性
-- skill 的可审查性
-- skill 的“所见即所得”维护体验
-
-### 4. 权限模型缺失
-
-Anthropic 在 sub-agents 里已经把“独立上下文、独立 system prompt、独立 tool access、独立 permission mode”做成了正式能力。[A4]
-
-Gemini 的 `activate_skill` 也强调：激活时会向用户展示 skill 名称、用途、将获得访问权限的目录，并在确认后再注入资源。[G1][G3]
-
-而当前仓库的 runtime skill 执行虽然有 entry contract，但缺：
-
-- 工具白名单/黑名单语义
-- 目录访问边界
-- 网络能力声明
-- 宿主能力要求
-- 权限升级策略
-
-这意味着它更像“能跑”，而不是“边界清晰地可跑”。
-
-### 5. 缺少 skill authoring eval
-
-Anthropic 明确把“build evaluations first / test with all models you plan to use / observe how Claude navigates Skills”列为 best practice。[A3]
-
-当前仓库测试主要覆盖：
-
-- runtime route
-- state/handoff
-- installer/payload
-- bundle compatibility
-
-但还缺少 skill authoring 层面的核心评测：
-
-- skill 是否容易被正确触发
-- description 是否过宽/过窄
-- 拆分后是否提高了命中率与成功率
-- 不同模型是否都能正确导航 skill 资源
-
-## 蓝图目标
-
-### 目标 1: 建立标准化 skill package
-
-把 skill 目录本身提升为第一事实源，至少统一到以下结构：
-
-- `SKILL.md`
-- `skill.yaml` 或等价 manifest
-- `scripts/`
-- `references/`
-- `assets/`
-
-其中：
-
-- `SKILL.md` 只保留入口说明、触发语义、流程骨架
-- 长模板进入 `assets/`
-- 静态规范进入 `references/`
-- 确定性执行逻辑进入 `scripts/`
+1. `SKILL.md` 只保留触发语义、流程骨架、关键边界
+2. 长模板迁入 `assets/`
+3. 长规范迁入 `references/`
+4. 确定性逻辑迁入 `scripts/`
+5. machine metadata 以同名 skill id 落在 `runtime/builtin_skill_packages/*/skill.yaml`
 
 ### 目标 2: 重做 discovery tier
 
-发现优先级至少对齐到：
+发现层级：
 
 1. workspace
 2. user
-3. bundled / extension
+3. bundled/extension
 
-并支持以下 alias：
+兼容路径：
 
-- `.agents/skills`
-- `.gemini/skills`
-- `~/.agents/skills`
-- `~/.gemini/skills`
-- 现有 `~/.codex/skills`
-- 现有 `~/.claude/skills`
+1. `.agents/skills` / `.gemini/skills` / `skills`
+2. `~/.agents/skills` / `~/.gemini/skills` / `~/.codex/skills` / `~/.claude/skills`
 
-目标不是复制 Gemini 的 UI，而是吸收它的分层与兼容路径设计。[G1]
+规则：
 
-### 目标 3: 让 skill package 生成 runtime catalog，而不是反过来
+1. workspace > user > bundled
+2. builtin 默认不可静默覆盖，需显式声明
 
-保留 `runtime/builtin_catalog.py` 作为运行时加速产物可以接受，但它应该从 skill package 生成，而不是手工维护。
+### 目标 3: source-of-truth 单向生成
 
-理想顺序：
+目标链路：
 
-1. skill package 定义元数据与资源
-2. build/generate 步骤产出 builtin catalog / manifest
-3. runtime 消费 catalog
+```text
+skill package -> validate -> generate catalog/manifest -> runtime consume
+```
 
-### 目标 4: 建立权限与宿主能力声明
+限制：
 
-skill 元数据应显式声明最小边界，例如：
+1. 允许保留 catalog 作为 runtime 加速产物
+2. 禁止继续手写 catalog 作为长期事实源
 
-- `allowed_paths`
-- `requires_network`
-- `tools`
-- `disallowed_tools`
-- `host_support`
-- `permission_mode`
+### 目标 4: 权限与宿主能力声明
 
-这里不必完全照搬 Anthropic sub-agents frontmatter，但必须把“运行边界”从隐式约定升级为显式契约。[A4][G3]
+最小字段集：
 
-### 目标 5: 把评测纳入标准流程
+```yaml
+tools:
+  - read
+disallowed_tools:
+  - write
+allowed_paths:
+  - .
+requires_network: false
+permission_mode: default
+host_support:
+  - codex
+  - claude
+```
 
-至少形成一组面向 skill 的回归评测：
+策略：
 
-- discovery/precedence eval
-- activation/selection eval
-- skill navigation eval
-- long-context split regression eval
-- cross-model smoke eval
+1. 当前强执行范围是 `skill.yaml` schema、`host_support`、runtime `permission_mode`
+2. `tools / disallowed_tools / allowed_paths / requires_network` 当前只做声明，不在 runtime 强执行
+3. 已落地的约束边界不允许被文档或实现静默放宽
 
-## P0 / P1 方向
+### 目标 5: 评测纳入标准流程
 
-### P0
+最小 eval 套件：
 
-- discovery tier 改造，先补 `.agents/skills` 兼容层
-- skill 包结构改造，先把 builtin skills 从大单文件拆出 `references/` / `assets/`
-- 建立 skill package -> catalog 的单向生成链路
-- 为 runtime skill 增加最小权限元数据
-- 建立首批 skill authoring 评测基线
+1. discovery/precedence eval
+2. selection/activation eval
+3. navigation eval（references/assets/scripts）
+4. split-regression eval（拆分前后命中与完成率）
+5. cross-model smoke eval
 
-### P1
+## 四项架构契约（必须同时成立）
 
-- 把 host adapter 从 `Codex/Claude` 扩展为更通用的 agent host abstraction
-- 补 extension tier / bundled tier 的统一发现与覆盖规则
-- 为 skill 激活增加更强的宿主能力声明与 fail-closed 行为
-- 补多模型评测与 skill 导航可观测性
+### 契约 A: 声明式 skill 选择
+
+1. Router 负责路由判定，不再长期持有硬编码 skill 绑定关系
+2. skill 选择由声明字段驱动（至少含 `supports_routes/triggers/host_support/priority`）
+3. 允许短期兼容 fallback，但必须可追踪并有退场计划
+
+### 契约 B: 权限边界（当前落地）
+
+1. 当前已强执行 `skill.yaml` schema、`host_support`、runtime `permission_mode`
+2. `tools / path / network` 相关字段当前保留为声明字段，不得在文档中表述为“已 runtime 强执行”
+3. 后续若升级到 host + runtime 双保险，必须补齐测试与 gate，再更新口径
+
+### 契约 C: package -> catalog 单向生成
+
+1. skill package（prompt-layer + builtin metadata）是唯一事实源
+2. builtin catalog 只作为生成产物，禁止手工长期维护
+3. CI 必须有 drift 校验（package 与 catalog 不一致即失败）
+
+### 契约 D: eval 质量门
+
+1. 除 smoke 外，必须定义 SLO 阈值（误触发率、漏触发率、跨模型漂移）
+2. 不达阈值不得进入发布
+3. 拆分前后必须有可对比的回归指标
+
+## 决策模式契约（四标准）
+
+### policy_id 列表
+
+1. `skill_selection_policy_choice`
+2. `permission_enforcement_mode_choice`
+3. `catalog_generation_timing_choice`
+4. `eval_slo_threshold_choice`
+
+### 触发规则
+
+1. 存在 2 个及以上可行方案，且都会影响长期契约
+2. 当前 `project/blueprint` 没有唯一答案
+3. 会影响安装入口、runtime 入口、权限边界或质量门阈值
+4. 命中后必须进入 `required_host_action=confirm_decision`
+
+### 不触发规则
+
+1. `project/blueprint` 已明确写死默认策略
+2. 仅涉及局部实现细节，不改变长期契约
+3. 可由确定性规则唯一推导
+
+### fail-closed
+
+1. 若检测到 tradeoff 信号却未生成 checkpoint request，必须 fail-closed
+2. reason code 统一使用 `checkpoint_request_missing_but_tradeoff_detected`
+
+## 入口守卫补充（直改白名单 vs runtime-first）
+
+默认策略：
+
+1. 先判定白名单（可直改）
+2. 未命中白名单即进入 runtime-first 主路径（黑名单即主路径）
+
+### 直改白名单（允许不经 runtime）
+
+1. `consult` 类型咨询问答，且未显式使用 `~go/~compare` 前缀
+2. 纯文案润色/排版/链接修复，不涉及状态文件与流程资产
+3. 用户明确指定“只改某文件文本”，且目标不在受保护路径
+
+### runtime-first（必须经 `scripts/sopify_runtime.py`）
+
+1. 命中 `plan/design/develop/decision/checkpoint/handoff` 任一流程语义
+2. 命中 `~go/~go plan/~go exec/~go finalize/~compare` 任一命令语义
+3. 变更目标位于 `.sopify-skills/plan/*` 的结构化任务资产
+4. 任何 `required_host_action` 处于 pending 三态（`answer_questions/confirm_decision/confirm_execute`）
+
+### 咨询问答边界
+
+1. `consult` 默认可直答，不强制 runtime
+2. 若咨询内容涉及长期契约分叉、tradeoff 或可能触发 checkpoint，必须切回 runtime-first
+3. 显式命令前缀优先级高于“咨询语气”，即使是问句也要走 runtime
+
+## 实施策略（先兼容，后收敛）
+
+### P0（必须先做）
+
+1. 发现层扩展与 precedence 固化
+2. 三个 builtin skill 的结构试点拆分
+3. package -> catalog 生成链初版
+4. 权限元数据最小集 + 当前 fail-closed 基线（`schema / host_support / permission_mode`）
+5. eval baseline 与回归门
+
+### P1（在 P0 稳定后）
+
+1. host adapter 升级为能力适配层
+2. bundled/extension tier 统一加载与校验
+3. 技能激活与导航的可观测性
+4. 多模型评测与统计闭环
 
 ## 非目标
 
-- 本轮不重写既有 runtime control plane 主链路
-- 本轮不把 Gemini CLI 直接作为正式宿主接入对象
-- 本轮不承诺一次性消除所有旧 prompt-layer 文档
+1. 本轮不重写 runtime control-plane 主链路
+2. 本轮不把 Gemini CLI 直接作为正式宿主接入对象
+3. 本轮不承诺一次性消除所有旧 prompt-layer 文档
 
-## 后续评审问题
+## 已拍板结果
 
-后续再次分析时，建议优先确认这几个问题：
-
-1. skill package 的最小 manifest 字段是否采用 `skill.yaml`，还是直接扩展 frontmatter
-2. `.agents/skills` 是否上升为仓库默认标准路径
-3. builtin catalog 是实时扫描生成，还是发布时静态生成
-4. runtime skill 的权限边界由宿主执行还是 runtime 自验
-5. skill eval 放在 `tests/` 还是独立 `evals/`
+1. `skill.yaml` 作为 builtin machine metadata 主入口；prompt-layer 文档与 machine metadata 先分层存放。
+2. discovery precedence 固化为 `workspace > user > bundled`，且声明式 `priority/source` 优先于 legacy fallback。
+3. catalog 通过 `scripts/generate-builtin-catalog.py` 在构建 / preflight / CI 路径生成，`runtime/builtin_catalog.generated.json` 作为产物消费。
+4. 权限边界当前仅对 `skill.yaml` schema、`host_support`、runtime `permission_mode` fail-closed；其余权限字段先声明不强执。
+5. eval 资产独立落位在 `evals/`，与 `tests/` 分责。
+6. release automation 采用 `commit-msg` hook 触发 `scripts/release-preflight.sh` + `scripts/release-sync.sh`；不再单列独立 release-hook 决策项。
 
 ## 参考文献
 

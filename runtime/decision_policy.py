@@ -10,6 +10,12 @@ from .models import DecisionOption, RouteDecision
 
 PLANNING_DECISION_ROUTES = {"plan_only", "workflow", "light_iterate"}
 TRADEOFF_CANDIDATES_ARTIFACT_KEY = "decision_candidates"
+STANDARD_POLICY_IDS = (
+    "skill_selection_policy_choice",
+    "permission_enforcement_mode_choice",
+    "catalog_generation_timing_choice",
+    "eval_slo_threshold_choice",
+)
 
 _ARCHITECTURE_KEYWORDS = (
     "runtime",
@@ -33,8 +39,64 @@ _ARCHITECTURE_KEYWORDS = (
 )
 _ALTERNATIVE_PATTERNS = (
     re.compile(r"(?P<left>.+?)\s+还是\s+(?P<right>.+)", re.IGNORECASE),
+    re.compile(r"(?P<left>.+?)还是(?P<right>.+)", re.IGNORECASE),
     re.compile(r"(?P<left>.+?)\s+vs\.?\s+(?P<right>.+)", re.IGNORECASE),
     re.compile(r"(?P<left>.+?)\s+or\s+(?P<right>.+)", re.IGNORECASE),
+)
+_STANDARD_POLICY_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "skill_selection_policy_choice",
+        (
+            "skill 选择",
+            "skill selection",
+            "route->skill",
+            "route to skill",
+            "resolver",
+            "supports_routes",
+            "硬编码 skill",
+            "声明式 skill",
+        ),
+    ),
+    (
+        "permission_enforcement_mode_choice",
+        (
+            "权限",
+            "permission",
+            "fail-closed",
+            "双保险",
+            "host + runtime",
+            "host/runtime",
+            "enforcement mode",
+        ),
+    ),
+    (
+        "catalog_generation_timing_choice",
+        (
+            "catalog",
+            "manifest",
+            "构建期",
+            "运行期",
+            "build-time",
+            "runtime generation",
+            "静态生成",
+            "动态生成",
+            "生成时机",
+        ),
+    ),
+    (
+        "eval_slo_threshold_choice",
+        (
+            "eval",
+            "slo",
+            "阈值",
+            "误触发",
+            "漏触发",
+            "漂移",
+            "drift",
+            "quality gate",
+            "质量门",
+        ),
+    ),
 )
 
 
@@ -78,11 +140,71 @@ def match_decision_policy(route: RouteDecision) -> DecisionPolicyMatch | None:
     if route.route_name not in PLANNING_DECISION_ROUTES:
         return None
 
+    standard_match = _match_standard_policy_choice(route)
+    if standard_match is not None:
+        return standard_match
+
     structured_match = _match_structured_tradeoff_policy(route)
     if structured_match is not None:
         return structured_match
 
     return _match_planning_semantic_split(route)
+
+
+def _match_standard_policy_choice(route: RouteDecision) -> DecisionPolicyMatch | None:
+    """Match one of the four standard policy checkpoints with tradeoff context."""
+    artifacts = route.artifacts
+    policy_id = _resolve_standard_policy_id(route)
+    if policy_id is None:
+        return None
+
+    options = _coerce_tradeoff_candidates(artifacts.get(TRADEOFF_CANDIDATES_ARTIFACT_KEY))
+    alternatives = extract_alternatives(route.request_text)
+    if len(options) < 2 and alternatives is None:
+        return None
+    if _should_suppress_tradeoff_decision(artifacts):
+        return None
+    if len(options) >= 2 and not _has_significant_tradeoffs(artifacts, options):
+        return None
+
+    recommended_index = _resolve_option_index(
+        option_id=artifacts.get("decision_recommended_option_id"),
+        options=options,
+    )
+    if recommended_index is None and options:
+        recommended_index = next((index for index, option in enumerate(options) if option.recommended), 0)
+    if recommended_index is None:
+        recommended_index = 0
+
+    default_index = _resolve_option_index(
+        option_id=artifacts.get("decision_default_option_id"),
+        options=options,
+    )
+    if default_index is None:
+        default_index = recommended_index
+
+    question = _text_value(artifacts.get("decision_question")) or route.request_text.strip() or "Confirm policy direction"
+    summary = _text_value(artifacts.get("decision_summary")) or _standard_policy_summary(policy_id)
+    option_texts = tuple(option.title for option in options) if options else tuple(alternatives or ())
+    decision_type = _text_value(artifacts.get("decision_type")) or policy_id
+
+    trigger_reason = "explicit_standard_policy_id"
+    if _text_value(artifacts.get("decision_policy_id")) not in STANDARD_POLICY_IDS and _text_value(artifacts.get("policy_id")) not in STANDARD_POLICY_IDS:
+        trigger_reason = f"{policy_id}_semantic_split"
+
+    return DecisionPolicyMatch(
+        policy_id=policy_id,
+        template_id="strategy_pick",
+        decision_type=decision_type,
+        question=question,
+        summary=summary,
+        options=options,
+        option_texts=option_texts,
+        recommended_option_index=recommended_index,
+        default_option_index=default_index,
+        trigger_reason=trigger_reason,
+        context_files=_coerce_string_tuple(artifacts.get("decision_context_files")),
+    )
 
 
 def _match_planning_semantic_split(route: RouteDecision) -> DecisionPolicyMatch | None:
@@ -150,6 +272,18 @@ def _match_structured_tradeoff_policy(route: RouteDecision) -> DecisionPolicyMat
         trigger_reason="structured_tradeoff_candidates",
         context_files=_coerce_string_tuple(artifacts.get("decision_context_files")),
     )
+
+
+def _resolve_standard_policy_id(route: RouteDecision) -> str | None:
+    artifacts = route.artifacts
+    explicit = _text_value(artifacts.get("decision_policy_id")) or _text_value(artifacts.get("policy_id"))
+    if explicit in STANDARD_POLICY_IDS:
+        return explicit
+    text = route.request_text.casefold()
+    for policy_id, keywords in _STANDARD_POLICY_KEYWORDS:
+        if any(keyword.casefold() in text for keyword in keywords):
+            return policy_id
+    return None
 
 
 def contains_architecture_keywords(text: str) -> bool:
@@ -285,4 +419,16 @@ def _default_tradeoff_summary(question: str) -> str:
     lowered = question.casefold()
     if any(token in lowered for token in ("why", "how", "compare", "tradeoff", "choose", "confirm")):
         return "Multiple executable candidates are available and the long-term direction still needs confirmation."
+    return "存在多个可执行方案，需要先确认长期方向。"
+
+
+def _standard_policy_summary(policy_id: str) -> str:
+    if policy_id == "skill_selection_policy_choice":
+        return "存在多种 skill 选择策略，需先确认声明式选择方向。"
+    if policy_id == "permission_enforcement_mode_choice":
+        return "存在多种权限执行策略，需先确认 host/runtime 的强制边界。"
+    if policy_id == "catalog_generation_timing_choice":
+        return "存在多种 catalog 生成时机，需先确认构建期或运行期策略。"
+    if policy_id == "eval_slo_threshold_choice":
+        return "存在多种 eval 阈值策略，需先确认质量门门槛。"
     return "存在多个可执行方案，需要先确认长期方向。"

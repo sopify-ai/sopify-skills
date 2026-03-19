@@ -1,259 +1,43 @@
 ---
 name: design
-description: 方案设计阶段详细规则；进入方案设计时读取；包含方案生成、任务拆分、方案包创建
+description: 方案设计阶段入口；聚合方案分级、任务拆分与方案包输出规则，按需加载 references/assets/scripts。
 ---
 
-# 方案设计 - 详细规则
+# Design（入口文档）
 
-**目标：** 设计技术方案，拆分可执行任务，创建方案包
+## 何时激活
 
-**执行流程：**
-```
-1. 确定方案包级别 (light/standard/full)
-2. 生成方案文件
-3. 拆分任务清单
-4. 输出摘要
-```
+- 进入方案设计阶段（`workflow` / `plan_only` / `light_iterate`）。
+- 需要把需求转换为可执行方案包与任务清单。
 
----
+## 执行骨架
 
-## 步骤 1: 确定方案包级别
+1. 加载 `references/design-rules.md`。
+2. 基于变更信号判定 `light/standard/full`。
+3. 按级别选取 `assets/` 中对应模板生成方案文件。
+4. 产出任务清单并做粒度检查（每项可验证、依赖明确）。
+5. 输出方案摘要，格式参考 `assets/output-summary.md`。
 
-**自动判定逻辑 (plan.level=auto)：**
+## 资源导航
 
-```yaml
-light (单文件 plan.md):
-  - 文件数 3-5
-  - 无架构变更
-  - 修改范围明确
+- 长规则：`references/design-rules.md`
+- 模板：`assets/*.md`
+- 确定性分级脚本：`scripts/select_plan_level.py`
 
-standard (三文件):
-  - 文件数 > 5
-  - 或 新功能开发
-  - 或 跨模块修改
+## 确定性逻辑（脚本优先）
 
-full (完整结构):
-  - 架构级变更
-  - 重大重构
-  - 新系统设计
+当 `plan.level=auto` 时，优先调用：
+
+```bash
+python3 Codex/Skills/CN/skills/sopify/design/scripts/select_plan_level.py \
+  --file-count 6 \
+  --new-feature \
+  --cross-module
 ```
 
----
+脚本输出 JSON，包含：建议级别与触发原因。
 
-## 步骤 2: 生成方案文件
+## 边界
 
-### Light 级别 - plan.md
-
-```markdown
-# {功能名称}
-
-## 背景
-{1-2 句话描述需求背景}
-
-## 方案
-{技术方案要点，列表形式}
-
-## 任务
-- [ ] {任务1}
-- [ ] {任务2}
-- [ ] {任务3}
-
-## 变更文件
-- {file1}
-- {file2}
-```
-
-### Standard 级别 - 三文件结构
-
-**background.md:**
-```markdown
-# 变更提案: {功能名称}
-
-## 需求背景
-{描述现状、痛点及变更驱动因素}
-
-## 变更内容
-1. {变更点1}
-2. {变更点2}
-
-## 影响范围
-- 模块: {列表}
-- 文件: {列表}
-
-## 风险评估
-- 风险: {描述}
-- 缓解: {措施}
-```
-
-**design.md:**
-```markdown
-# 技术设计: {功能名称}
-
-## 技术方案
-- 核心技术: {语言/框架/库}
-- 实现要点:
-  - {要点1}
-  - {要点2}
-
-## 架构设计
-{如有变更，包含 mermaid 图}
-
-## 安全与性能
-- 安全: {措施}
-- 性能: {优化}
-```
-
-**tasks.md:**
-```markdown
-# 任务清单: {功能名称}
-
-目录: `.sopify-skills/plan/YYYYMMDD_{feature}/`
-
-## 1. {模块名称}
-- [ ] 1.1 在 `{文件路径}` 中实现 {功能}
-- [ ] 1.2 在 `{文件路径}` 中实现 {功能}
-
-## 2. 测试
-- [ ] 2.1 {测试任务}
-
-## 3. 文档更新
-- [ ] 3.1 更新 {知识库文件}
-```
-
-### Full 级别 - 完整结构
-
-在 Standard 基础上增加：
-
-```
-.sopify-skills/plan/YYYYMMDD_feature/
-├── background.md
-├── design.md
-├── tasks.md
-├── adr/
-│   └── 001-{决策标题}.md
-└── diagrams/
-    └── {图表名}.mermaid
-```
-
-**adr/001-xxx.md:**
-```markdown
-# ADR-001: {决策标题}
-
-## 状态
-已采纳 | 待定 | 已废弃
-
-## 上下文
-{背景和问题}
-
-## 决策
-{核心决策}
-
-## 理由
-{原因}
-
-## 替代方案
-- {方案A}: 拒绝原因 - {原因}
-
-## 影响
-{后果与风险}
-```
-
----
-
-## 步骤 3: 任务拆分原则
-
-**任务粒度：**
-```yaml
-每个任务应该:
-  - 可在 30 分钟内完成
-  - 有明确的验证标准
-  - 依赖关系清晰
-
-任务分类:
-  1. 核心功能实现
-  2. 辅助功能
-  3. 安全检查
-  4. 测试
-  5. 文档更新
-```
-
-**任务状态符号：**
-| 符号 | 含义 |
-|-----|------|
-| `[ ]` | 待执行 |
-| `[x]` | 已完成 |
-| `[-]` | 已跳过 |
-| `[!]` | 阻塞中 |
-
----
-
-## 步骤 4: 输出格式
-
-```
-[{BRAND_NAME}] 方案设计 ✓
-
-方案: .sopify-skills/plan/{YYYYMMDD}_{feature}/
-概要: {一句话技术方案}
-任务: {N} 项
-
----
-Changes: {N} files
-  - .sopify-skills/plan/...
-
-Next: 在宿主会话中继续评审或执行方案，或直接回复修改意见
-```
-
----
-
-## 阶段转换规则
-
-```yaml
-workflow.mode = strict:
-  → 输出摘要 → 等待用户确认
-
-workflow.mode = adaptive:
-  → 如果是 ~go 命令触发 → 自动推进到执行前确认/后续宿主链路
-  → 如果是 ~go plan 命令触发 → 输出摘要并停止
-
-用户回复修改意见:
-  → 保持在方案设计阶段 → 更新方案文件 → 重新输出摘要
-```
-
-## repo-local runtime helper
-
-如果当前仓库存在 `scripts/sopify_runtime.py`，且输入是原始用户请求：
-
-- 优先把原始输入交给该默认入口，让 router 自己决定 `consult / quick_fix / light_iterate / workflow / plan_only / compare`
-- 不要把裸文本一律手工改写成 `~go plan`
-
-如果目标是明确执行 `~go plan` 路径，且当前仓库存在 `scripts/go_plan_runtime.py`：
-
-- 优先调用该入口，而不是手工拼接方案摘要
-- 由 runtime 负责配置加载、路由、方案骨架生成、state/replay 落盘与统一输出渲染
-- 本技能继续提供方案结构、任务拆分和输出契约
-
-补充边界：
-
-- `scripts/go_plan_runtime.py` 只用于 plan-only slice
-- `~compare` 仍然需要宿主侧专用桥接，不通过默认通用入口自动接通
-
-如果该入口不存在：
-
-- 按本技能模板手动生成方案文件
-- 保持输出摘要与本技能定义一致
-
----
-
-## 方案包命名规则
-
-```
-格式: YYYYMMDD_feature_name
-示例: 20260115_user_auth
-      20260115_fix_login_bug
-      20260115_refactor_api
-```
-
-**命名原则：**
-- 使用下划线分隔
-- 功能名用英文小写
-- 简洁但能识别功能
+- 不直接执行代码任务（交给 `develop`）。
+- 不替代 runtime 的路由决策，仅提供方案结构与任务拆分契约。

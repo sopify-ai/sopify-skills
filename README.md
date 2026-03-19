@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--02--13-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--19.183617-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
@@ -116,6 +116,25 @@ bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
 - `answer_questions / confirm_decision / confirm_execute` 命中时，handoff 会优先附带标准化 `checkpoint_request`
 - builtin skill 发现由 `runtime/builtin_catalog.py` 负责，不依赖 bundle 内再携带 `Codex/Skills` 或 `Claude/Skills` 文档目录
 - 非闭环路由现在会写入 `.sopify-skills/state/current_handoff.json`，`Next:` 文案优先基于 handoff contract 渲染
+
+### 硬约束复核（2026-03-19）
+
+以下三条约束已按隔离 smoke 复核：
+
+- 仍保持“一次安装”模型，不要求第二个安装命令来准备 workspace bundle
+- 首次项目触发时，runtime 仍通过已安装 payload 自动补齐 `.sopify-runtime/`
+- 默认主入口仍是 `scripts/sopify_runtime.py` / `.sopify-runtime/scripts/sopify_runtime.py`
+
+复核命令：
+
+```bash
+python3 scripts/check-install-payload-bundle-smoke.py \
+  --output-json /tmp/sopify-install-payload-bundle-smoke.json
+```
+
+复核记录：
+
+- [专项蓝图收口文档](./.sopify-skills/blueprint/skill-standards-refactor.md)
 
 ### 首次使用
 
@@ -492,6 +511,52 @@ Next: 可调整 multi_model.enabled / candidates[*].enabled / include_default_mo
 - [workflow-learning Changelog (CN)](./Codex/Skills/CN/skills/sopify/workflow-learning/CHANGELOG.md)
 - [workflow-learning Changelog (EN)](./Codex/Skills/EN/skills/sopify/workflow-learning/CHANGELOG.md)
 
+## Skill Authoring（分层规范）
+
+从 `2026-03-19` 起，Sopify skill 采用分层 package 规范。当前仓库中，`analyze/design/develop` 已在 Codex CN/EN 完成 prompt-layer 试点，Claude 侧由同步脚本镜像。
+
+当前仓库实现（逻辑 package）：
+
+```text
+Codex/Skills/{CN,EN}/skills/sopify/<skill>/
+├── SKILL.md        # 入口文档（触发 + 骨架 + 边界）
+├── references/     # 长规则
+├── assets/         # 模板与示例
+└── scripts/        # 确定性逻辑
+
+runtime/builtin_skill_packages/<skill>/
+└── skill.yaml      # builtin machine metadata（routes/permissions/host_support）
+```
+
+关键约束：
+
+- `Codex/Skills/{CN,EN}` 是 prompt-layer 真源，`Claude/Skills/{CN,EN}` 仅镜像
+- `runtime/builtin_skill_packages/*/skill.yaml` 是 builtin machine metadata 真源
+- route 绑定优先使用 `supports_routes`（声明式 resolver）
+- `skill.yaml` 统一经 `runtime/skill_schema.py` 校验
+- 当前仅对非法 `skill.yaml` schema / 不支持的 `host_support` / 非法 runtime `permission_mode` 执行 fail-closed
+- `tools / disallowed_tools / allowed_paths / requires_network` 当前仅做声明字段，不做 runtime 强执行
+- builtin catalog 由 `runtime/builtin_skill_packages/*/skill.yaml` 生成，不手写维护
+
+维护者最小检查：
+
+```bash
+bash scripts/sync-skills.sh
+bash scripts/check-skills-sync.sh
+bash scripts/check-version-consistency.sh
+python3 scripts/generate-builtin-catalog.py
+python3 scripts/check-skill-eval-gate.py
+python3 -m unittest tests.test_runtime -v
+```
+
+详见规范文档：
+
+- [Skill Authoring 规范（中文）](./docs/skill-authoring.md)
+- [Skill Authoring Guide (English)](./docs/skill-authoring.en.md)
+- [专项蓝图收口文档](./.sopify-skills/blueprint/skill-standards-refactor.md)
+- [Skill Eval Baseline](./evals/skill_eval_baseline.json)
+- [Skill Eval SLO](./evals/skill_eval_slo.json)
+
 ---
 
 ## 同步机制（维护者）
@@ -499,7 +564,7 @@ Next: 可调整 multi_model.enabled / candidates[*].enabled / include_default_mo
 为避免 Codex/Claude 与中英文规则漂移，仓库内置同步与校验脚本：
 
 ```bash
-# 1) 从 Codex 真源同步到 Claude 镜像
+# 1) 从 Codex prompt-layer 真源同步到 Claude 镜像
 bash scripts/sync-skills.sh
 
 # 2) 校验四套文件是否一致
@@ -512,6 +577,7 @@ bash scripts/check-version-consistency.sh
 脚本默认忽略 Finder/Explorer 噪音文件（`.DS_Store`、`Thumbs.db`），避免误报。
 建议在提交技能规则改动前固定执行一次 `sync -> check-skills-sync -> check-version-consistency`。
 CI（`.github/workflows/ci.yml`）会在 PR/Push 执行同样门禁，并用 `git diff --exit-code` 拦截“先同步才能通过”的漂移改动。
+若同时修改 `runtime/builtin_skill_packages/*/skill.yaml`，还应补跑 catalog / eval / runtime test。
 
 ---
 
@@ -609,6 +675,12 @@ sopify-skills/
 │       └── EN/                 # 英文版
 ├── Codex/
 │   └── Skills/                 # Codex CLI 版本
+├── runtime/
+│   ├── builtin_skill_packages/ # builtin skill machine metadata 真源
+│   └── builtin_catalog.generated.json
+├── docs/
+│   ├── skill-authoring.md
+│   └── skill-authoring.en.md
 ├── examples/
 │   └── sopify.config.yaml      # 配置示例
 ├── README.md                   # 中文文档
@@ -658,11 +730,14 @@ workflow:
 
 ### Q: 同步脚本什么时候用？
 
-当你修改 `Codex/Skills/{CN,EN}` 下的规则文件后，运行：
+当你修改 `Codex/Skills/{CN,EN}` 下的 prompt-layer 文档，或修改 `runtime/builtin_skill_packages/*/skill.yaml` 元数据后，建议至少运行：
 ```bash
 bash scripts/sync-skills.sh
 bash scripts/check-skills-sync.sh
 bash scripts/check-version-consistency.sh
+python3 scripts/generate-builtin-catalog.py
+python3 scripts/check-skill-eval-gate.py
+python3 -m unittest tests.test_runtime -v
 ```
 若校验失败，先修复差异再提交。
 

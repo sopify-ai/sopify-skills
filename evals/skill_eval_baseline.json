@@ -1,0 +1,244 @@
+{
+  "version": "1",
+  "discovery_cases": [
+    {
+      "id": "workspace_alias_precedence_over_user",
+      "workspace_skills": [
+        {
+          "root": ".agents/skills",
+          "skill_id": "shared-skill",
+          "description": "workspace-agents"
+        }
+      ],
+      "user_skills": [
+        {
+          "root": ".agents/skills",
+          "skill_id": "shared-skill",
+          "description": "user-agents"
+        }
+      ],
+      "assertions": [
+        {
+          "skill_id": "shared-skill",
+          "source": "workspace",
+          "description": "workspace-agents"
+        }
+      ]
+    },
+    {
+      "id": "user_legacy_claude_path_visible",
+      "workspace_skills": [],
+      "user_skills": [
+        {
+          "root": ".claude/skills",
+          "skill_id": "claude-only",
+          "description": "claude-only"
+        }
+      ],
+      "assertions": [
+        {
+          "skill_id": "claude-only",
+          "source": "user",
+          "description": "claude-only"
+        }
+      ]
+    },
+    {
+      "id": "builtin_override_requires_explicit_opt_in",
+      "workspace_skills": [
+        {
+          "root": "skills",
+          "skill_id": "analyze",
+          "description": "local-override-attempt"
+        }
+      ],
+      "user_skills": [],
+      "assertions": [
+        {
+          "skill_id": "analyze",
+          "source": "builtin"
+        }
+      ]
+    }
+  ],
+  "selection_cases": [
+    {
+      "id": "explicit_go_plan",
+      "request": "~go plan 补 runtime 骨架",
+      "expected_route": "plan_only",
+      "expected_candidate_skills": ["analyze", "design"],
+      "expectation": "positive",
+      "target_skill": "design"
+    },
+    {
+      "id": "explicit_compare_command",
+      "request": "~compare 方案对比",
+      "expected_route": "compare",
+      "expected_candidate_skills": ["model-compare"],
+      "expectation": "positive",
+      "target_skill": "model-compare"
+    },
+    {
+      "id": "compare_prefix_intent",
+      "request": "对比分析：adapter vs direct host coupling",
+      "expected_route": "compare",
+      "expected_candidate_skills": ["model-compare"],
+      "expectation": "positive",
+      "target_skill": "model-compare"
+    },
+    {
+      "id": "consult_question_cn",
+      "request": "这个方案为什么要这样拆？",
+      "expected_route": "consult",
+      "expected_candidate_skills": [],
+      "expectation": "negative",
+      "target_skill": "develop"
+    },
+    {
+      "id": "quick_fix_scoped_file",
+      "request": "修复 src/app.ts 中的空指针",
+      "expected_route": "quick_fix",
+      "expected_candidate_skills": ["develop"],
+      "expectation": "positive",
+      "target_skill": "develop"
+    },
+    {
+      "id": "light_iterate_multi_file",
+      "request": "修改 src/a.ts src/b.ts src/c.ts 适配字段",
+      "expected_route": "light_iterate",
+      "expected_candidate_skills": ["design", "develop"],
+      "expectation": "positive",
+      "target_skill": "develop"
+    },
+    {
+      "id": "workflow_architecture_change",
+      "request": "重构 runtime adapter 和 workflow 引擎",
+      "expected_route": "workflow",
+      "expected_candidate_skills": ["analyze", "design", "develop"],
+      "expectation": "positive",
+      "target_skill": "design"
+    },
+    {
+      "id": "replay_keyword_intent",
+      "request": "回放最近一次实现",
+      "expected_route": "replay",
+      "expected_candidate_skills": ["workflow-learning"],
+      "expectation": "positive",
+      "target_skill": "workflow-learning"
+    },
+    {
+      "id": "explicit_go_exec_command",
+      "request": "~go exec",
+      "expected_route": "exec_plan",
+      "expected_candidate_skills": ["develop"],
+      "expectation": "positive",
+      "target_skill": "develop"
+    },
+    {
+      "id": "consult_question_en",
+      "request": "why this split?",
+      "expected_route": "consult",
+      "expected_candidate_skills": [],
+      "expectation": "negative",
+      "target_skill": "develop"
+    }
+  ],
+  "navigation_cases": [
+    {
+      "id": "runtime_package_with_full_resources",
+      "root": ".agents/skills",
+      "skill_id": "nav-runtime",
+      "description": "navigation runtime skill",
+      "manifest": {
+        "mode": "runtime",
+        "runtime_entry": "scripts/nav_runtime.py",
+        "supports_routes": ["workflow"]
+      },
+      "required_paths": [
+        "references/guide.md",
+        "assets/template.md",
+        "scripts/nav_runtime.py"
+      ],
+      "assertions": {
+        "source": "workspace",
+        "runtime_entry_required": true
+      }
+    },
+    {
+      "id": "advisory_package_with_reference_assets",
+      "root": ".gemini/skills",
+      "skill_id": "nav-advisory",
+      "description": "navigation advisory skill",
+      "manifest": {
+        "mode": "advisory",
+        "supports_routes": ["consult"]
+      },
+      "required_paths": [
+        "references/notes.md",
+        "assets/example.md"
+      ],
+      "assertions": {
+        "source": "workspace",
+        "runtime_entry_required": false
+      }
+    }
+  ],
+  "cross_model_cases": [
+    {
+      "id": "default_plus_two_external_candidates",
+      "question": "对比 adapter 与 direct host coupling",
+      "config": {
+        "enabled": true,
+        "timeout_sec": 10,
+        "max_parallel": 3,
+        "include_default_model": true,
+        "context_bridge": false,
+        "candidates": [
+          {
+            "id": "ext-a",
+            "provider": "openai_compatible",
+            "model": "model-a",
+            "enabled": true,
+            "api_key_env": "TEST_KEY_A"
+          },
+          {
+            "id": "ext-b",
+            "provider": "openai_compatible",
+            "model": "model-b",
+            "enabled": true,
+            "api_key_env": "TEST_KEY_B"
+          }
+        ]
+      },
+      "env": {
+        "TEST_KEY_A": "key-a",
+        "TEST_KEY_B": "key-b"
+      },
+      "answers": {
+        "session_default": "Prefer adapter boundary.",
+        "ext-a": "Prefer adapter boundary.",
+        "ext-b": "Direct host coupling is acceptable."
+      },
+      "min_results": 3,
+      "required_reason_codes": ["CONTEXT_BRIDGE_BYPASSED"]
+    },
+    {
+      "id": "feature_disabled_single_model_fallback",
+      "question": "对比 runtime 策略",
+      "config": {
+        "enabled": false,
+        "timeout_sec": 10,
+        "max_parallel": 3,
+        "include_default_model": true,
+        "context_bridge": false,
+        "candidates": []
+      },
+      "env": {},
+      "answers": {
+        "session_default": "Use deterministic default path."
+      },
+      "min_results": 1,
+      "required_reason_codes": ["FEATURE_DISABLED", "INSUFFICIENT_USABLE_MODELS"]
+    }
+  ]
+}

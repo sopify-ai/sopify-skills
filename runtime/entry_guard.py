@@ -14,6 +14,7 @@ ENTRY_GUARD_SCHEMA_VERSION = "1"
 ENTRY_GUARD_PENDING_ACTIONS = ("answer_questions", "confirm_decision", "confirm_execute")
 ENTRY_GUARD_BYPASS_BLOCKED_COMMANDS = ("~go exec",)
 ENTRY_GUARD_DEVELOP_CALLBACK_REASON_CODE = "develop_checkpoint_callback_required"
+DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE = "direct_edit_blocked_runtime_required"
 ENTRY_GUARD_REASON_CODES = {
     "answer_questions": "entry_guard_clarification_pending",
     "confirm_decision": "entry_guard_decision_pending",

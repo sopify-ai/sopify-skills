@@ -1,0 +1,27 @@
+schema_version: "1"
+id: workflow-learning
+mode: workflow
+names:
+  zh-CN: workflow-learning
+  en-US: workflow-learning
+descriptions:
+  zh-CN: 工作流学习子技能；用于回放、复盘与决策解释。
+  en-US: Workflow-learning sub-skill for replay, review, and decision explanation.
+handoff_kind: replay
+contract_version: "1"
+supports_routes:
+  - replay
+triggers:
+  - "回放"
+  - "复盘"
+  - "为什么这么做"
+  - "replay"
+  - "review the implementation"
+tools:
+  - read
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

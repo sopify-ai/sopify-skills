@@ -1,0 +1,23 @@
+schema_version: "1"
+id: design
+mode: workflow
+names:
+  zh-CN: design
+  en-US: design
+descriptions:
+  zh-CN: 方案设计阶段详细规则；用于方案生成与任务拆分。
+  en-US: Detailed design-stage rules for solution generation and task breakdown.
+handoff_kind: plan
+contract_version: "1"
+supports_routes:
+  - workflow
+  - plan_only
+  - light_iterate
+tools:
+  - read
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

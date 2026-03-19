@@ -1,0 +1,19 @@
+schema_version: "1"
+id: templates
+mode: workflow
+names:
+  zh-CN: templates
+  en-US: templates
+descriptions:
+  zh-CN: 文档模板集合；用于生成方案与知识库文档。
+  en-US: Template collection for plan and knowledge-base documents.
+handoff_kind: template
+contract_version: "1"
+tools:
+  - read
+allowed_paths:
+  - .
+host_support:
+  - codex
+  - claude
+permission_mode: default

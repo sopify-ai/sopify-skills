@@ -72,6 +72,12 @@ class SkillMeta:
     handoff_kind: Optional[str] = None
     contract_version: str = "1"
     supports_routes: tuple[str, ...] = ()
+    tools: tuple[str, ...] = ()
+    disallowed_tools: tuple[str, ...] = ()
+    allowed_paths: tuple[str, ...] = ()
+    requires_network: bool = False
+    host_support: tuple[str, ...] = ()
+    permission_mode: str = "default"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +94,12 @@ class SkillMeta:
             "handoff_kind": self.handoff_kind,
             "contract_version": self.contract_version,
             "supports_routes": list(self.supports_routes),
+            "tools": list(self.tools),
+            "disallowed_tools": list(self.disallowed_tools),
+            "allowed_paths": list(self.allowed_paths),
+            "requires_network": self.requires_network,
+            "host_support": list(self.host_support),
+            "permission_mode": self.permission_mode,
         }
 
 

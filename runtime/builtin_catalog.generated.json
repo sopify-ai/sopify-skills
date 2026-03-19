@@ -1,0 +1,266 @@
+{
+  "generated_at": "2026-03-19T10:32:14.131624+00:00",
+  "schema_version": "1",
+  "skills": [
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Detailed requirements-analysis rules for scoring, clarification, and scope checks.",
+        "zh-CN": "需求分析阶段详细规则；用于需求评分、追问与范围判断。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "analysis",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "analyze",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "analyze",
+        "zh-CN": "analyze"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [
+        "workflow",
+        "plan_only"
+      ],
+      "tools": [
+        "read"
+      ],
+      "triggers": []
+    },
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Detailed design-stage rules for solution generation and task breakdown.",
+        "zh-CN": "方案设计阶段详细规则；用于方案生成与任务拆分。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "plan",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "design",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "design",
+        "zh-CN": "design"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [
+        "workflow",
+        "plan_only",
+        "light_iterate"
+      ],
+      "tools": [
+        "read"
+      ],
+      "triggers": []
+    },
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Detailed implementation-stage rules for code execution, validation, and KB sync.",
+        "zh-CN": "开发实施阶段详细规则；用于代码执行、验证与知识库同步。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "develop",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "develop",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "develop",
+        "zh-CN": "develop"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [
+        "workflow",
+        "light_iterate",
+        "quick_fix",
+        "resume_active",
+        "exec_plan"
+      ],
+      "tools": [
+        "read",
+        "write"
+      ],
+      "triggers": []
+    },
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Knowledge-base management skill for bootstrap, updates, and synchronization.",
+        "zh-CN": "知识库管理技能；用于初始化、更新与同步知识库。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "kb",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "kb",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "kb",
+        "zh-CN": "kb"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [],
+      "tools": [
+        "read",
+        "write"
+      ],
+      "triggers": []
+    },
+    {
+      "allowed_paths": [
+        ".",
+        "scripts",
+        "evals"
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Multi-model comparison sub-skill executed by the runtime compare route.",
+        "zh-CN": "多模型并发对比子技能；由 runtime 负责 compare 路由执行。"
+      },
+      "disallowed_tools": [
+        "write"
+      ],
+      "entry_kind": "python",
+      "handoff_kind": "compare",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "model-compare",
+      "metadata": {},
+      "mode": "runtime",
+      "names": {
+        "en-US": "model-compare",
+        "zh-CN": "model-compare"
+      },
+      "permission_mode": "dual",
+      "requires_network": true,
+      "runtime_entry": "scripts/model_compare_runtime.py",
+      "supports_routes": [
+        "compare"
+      ],
+      "tools": [
+        "read",
+        "exec",
+        "network"
+      ],
+      "triggers": [
+        "~compare",
+        "对比分析：",
+        "compare:"
+      ]
+    },
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Template collection for plan and knowledge-base documents.",
+        "zh-CN": "文档模板集合；用于生成方案与知识库文档。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "template",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "templates",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "templates",
+        "zh-CN": "templates"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [],
+      "tools": [
+        "read"
+      ],
+      "triggers": []
+    },
+    {
+      "allowed_paths": [
+        "."
+      ],
+      "contract_version": "1",
+      "descriptions": {
+        "en-US": "Workflow-learning sub-skill for replay, review, and decision explanation.",
+        "zh-CN": "工作流学习子技能；用于回放、复盘与决策解释。"
+      },
+      "disallowed_tools": [],
+      "entry_kind": null,
+      "handoff_kind": "replay",
+      "host_support": [
+        "codex",
+        "claude"
+      ],
+      "id": "workflow-learning",
+      "metadata": {},
+      "mode": "workflow",
+      "names": {
+        "en-US": "workflow-learning",
+        "zh-CN": "workflow-learning"
+      },
+      "permission_mode": "default",
+      "requires_network": false,
+      "runtime_entry": null,
+      "supports_routes": [
+        "replay"
+      ],
+      "tools": [
+        "read"
+      ],
+      "triggers": [
+        "回放",
+        "复盘",
+        "为什么这么做",
+        "replay",
+        "review the implementation"
+      ]
+    }
+  ],
+  "source": "runtime/builtin_skill_packages"
+}
