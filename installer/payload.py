@@ -30,6 +30,7 @@ _REQUIRED_BUNDLE_CAPABILITIES = {
     "develop_resume_context": True,
     "planning_mode_orchestrator": True,
     "preferences_preload": True,
+    "runtime_gate": True,
     "runtime_entry_guard": True,
 }
 

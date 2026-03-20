@@ -8,10 +8,7 @@ stable handoff points such as `review_or_execute_plan` and `confirm_execute`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
-import os
 from pathlib import Path
-import subprocess
 import sys
 from typing import Any, Callable, Mapping
 
@@ -21,6 +18,7 @@ from .config import load_runtime_config
 from .decision_bridge import prompt_cli_decision_submission
 from .engine import run_runtime
 from .models import RuntimeConfig, RuntimeResult
+from .workspace_preflight import WorkspacePreflightError, preflight_workspace_runtime as _shared_preflight_workspace_runtime
 
 PLAN_ORCHESTRATOR_PENDING_EXIT = 2
 PLAN_ORCHESTRATOR_CANCELLED_EXIT = 3
@@ -65,78 +63,14 @@ def preflight_workspace_runtime(
     *,
     payload_manifest_path: str | Path | None = None,
 ) -> Mapping[str, Any] | None:
-    """Best-effort repo-local workspace preflight using the installed payload helper.
-
-    The vendored bundle flow should already have been selected by the host via
-    manifest-first preflight, so a bundle-local orchestrator intentionally skips
-    self-updating the workspace bundle it is currently executing from.
-    """
-
-    repo_root = Path(__file__).resolve().parents[1]
-    bundle_root = workspace_root / ".sopify-runtime"
-    if repo_root == bundle_root:
-        return {
-            "action": "skipped",
-            "reason_code": "RUNNING_FROM_WORKSPACE_BUNDLE",
-            "message": "Current entry is already running from the workspace bundle; host preflight remains authoritative.",
-        }
-
-    manifest_candidates: list[Path] = []
-    if payload_manifest_path is not None:
-        manifest_candidates.append(Path(payload_manifest_path).expanduser().resolve())
-    env_manifest = (os.environ.get("SOPIFY_PAYLOAD_MANIFEST") or "").strip()
-    if env_manifest:
-        manifest_candidates.append(Path(env_manifest).expanduser().resolve())
-    home = Path.home()
-    manifest_candidates.extend(
-        [
-            home / ".codex" / "sopify" / "payload-manifest.json",
-            home / ".claude" / "sopify" / "payload-manifest.json",
-        ]
-    )
-
-    payload_manifest = None
-    payload_manifest_file = None
-    for candidate in manifest_candidates:
-        if not candidate.is_file():
-            continue
-        try:
-            payload_manifest = json.loads(candidate.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            raise PlanOrchestratorError(f"Invalid payload manifest: {candidate}") from exc
-        if isinstance(payload_manifest, dict):
-            payload_manifest_file = candidate
-            break
-    if payload_manifest is None or payload_manifest_file is None:
-        return {
-            "action": "skipped",
-            "reason_code": "PAYLOAD_MANIFEST_NOT_FOUND",
-            "message": "No installed host payload was found; continuing with repo-local planning entry.",
-        }
-
-    helper_entry = str(payload_manifest.get("helper_entry") or "").strip()
-    if not helper_entry:
-        raise PlanOrchestratorError(f"Payload manifest is missing helper_entry: {payload_manifest_file}")
-    payload_root = payload_manifest_file.parent
-    helper_path = (payload_root / helper_entry).resolve()
-    if not helper_path.is_file():
-        raise PlanOrchestratorError(f"Workspace bootstrap helper is missing: {helper_path}")
-
-    completed = subprocess.run(
-        [sys.executable, str(helper_path), "--workspace-root", str(workspace_root)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    stdout = completed.stdout.strip()
+    """Backwards-compatible wrapper around shared workspace preflight."""
     try:
-        result = json.loads(stdout) if stdout else {}
-    except json.JSONDecodeError as exc:
-        raise PlanOrchestratorError(f"Workspace bootstrap returned invalid JSON: {stdout or completed.stderr.strip()}") from exc
-    if completed.returncode != 0 or str(result.get("action") or "").strip() == "failed":
-        message = str(result.get("message") or completed.stderr.strip() or stdout or "unknown bootstrap failure")
-        raise PlanOrchestratorError(f"Workspace preflight failed: {message}")
-    return result
+        return _shared_preflight_workspace_runtime(
+            workspace_root,
+            payload_manifest_path=payload_manifest_path,
+        )
+    except WorkspacePreflightError as exc:
+        raise PlanOrchestratorError(str(exc)) from exc
 
 
 def run_plan_loop(

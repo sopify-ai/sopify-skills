@@ -107,12 +107,15 @@ def run_smoke(*, target_value: str, temp_root: Path) -> dict[str, Any]:
     bundle_manifest = json.loads((bundle_root / "manifest.json").read_text(encoding="utf-8"))
     default_entry = str(bundle_manifest.get("default_entry") or "")
     plan_only_entry = str(bundle_manifest.get("plan_only_entry") or "")
+    runtime_gate_entry = str(bundle_manifest.get("limits", {}).get("runtime_gate_entry") or "")
     entry_guard = bundle_manifest.get("limits", {}).get("entry_guard", {})
 
     if default_entry != "scripts/sopify_runtime.py":
         raise RuntimeError(f"Unexpected default_entry: {default_entry!r}")
     if plan_only_entry != "scripts/go_plan_runtime.py":
         raise RuntimeError(f"Unexpected plan_only_entry: {plan_only_entry!r}")
+    if runtime_gate_entry != "scripts/runtime_gate.py":
+        raise RuntimeError(f"Unexpected runtime_gate_entry: {runtime_gate_entry!r}")
     if entry_guard.get("default_runtime_entry") != default_entry:
         raise RuntimeError("Manifest limits.entry_guard.default_runtime_entry drifted from default_entry.")
 
@@ -131,11 +134,13 @@ def run_smoke(*, target_value: str, temp_root: Path) -> dict[str, Any]:
             "runtime_bootstrap_on_project_trigger": True,
             "default_runtime_entry_preserved": True,
             "plan_only_helper_preserved": True,
+            "runtime_gate_entry_preserved": True,
             "bundle_smoke_passed": True,
         },
         "manifest": {
             "default_entry": default_entry,
             "plan_only_entry": plan_only_entry,
+            "runtime_gate_entry": runtime_gate_entry,
             "entry_guard_default_runtime_entry": entry_guard.get("default_runtime_entry"),
         },
         "install_stdout": install_stdout,

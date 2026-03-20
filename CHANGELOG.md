@@ -6,6 +6,27 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-20.183348] - 2026-03-20
+
+### Added
+
+- New prompt-level runtime gate assets:
+  - `runtime/gate.py`
+  - `runtime/workspace_preflight.py`
+  - `scripts/runtime_gate.py`
+  - `scripts/check-prompt-runtime-gate-smoke.py`
+
+### Changed
+
+- Host prompt contracts for Codex and Claude now require `runtime_gate.py enter` as the first Sopify hop, with `allowed_response_mode` driving fail-closed follow-up behavior.
+- Bundle manifest / installer / sync validation now declare and verify the `runtime_gate` capability and the `limits.runtime_gate_*` contract.
+- README docs now treat prompt-level runtime gate as Layer 1, define `current_handoff.json` as the primary machine truth, and limit `current_gate_receipt.json` to visibility-only usage.
+
+### Tests
+
+- Added `tests/test_runtime_gate.py` coverage for normal follow-up, checkpoint-only flows, and fail-closed behavior.
+- Expanded bundle/install integration coverage to assert `runtime_gate` files, manifest fields, and vendored runtime-gate execution.
+
 ## [2026-03-20.141842] - 2026-03-20
 
 ### Added

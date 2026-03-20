@@ -9,6 +9,7 @@ Usage: scripts/check-runtime-smoke.sh
 
 Run a minimal zero-config smoke test against the current Sopify runtime bundle.
 This script works both in the repository root and inside a vendored .sopify-runtime/ bundle.
+It validates bundle/runtime asset integrity, not first-hop host ingress ordering.
 EOF
 }
 
@@ -20,6 +21,11 @@ fi
 RUNTIME_ENTRY="$BUNDLE_ROOT/scripts/sopify_runtime.py"
 if [[ ! -f "$RUNTIME_ENTRY" ]]; then
   echo "Missing runtime entry: $RUNTIME_ENTRY" >&2
+  exit 1
+fi
+RUNTIME_GATE_ENTRY="$BUNDLE_ROOT/scripts/runtime_gate.py"
+if [[ ! -f "$RUNTIME_GATE_ENTRY" ]]; then
+  echo "Missing runtime gate entry: $RUNTIME_GATE_ENTRY" >&2
   exit 1
 fi
 
@@ -43,16 +49,25 @@ if [[ ! -f "$MANIFEST_FILE" ]]; then
   fi
 fi
 
+# This smoke intentionally checks bundle completeness plus repo-local runtime
+# behavior. Gate-first host ordering belongs to future host-bridge smoke.
 OUTPUT="$(
   python3 "$RUNTIME_ENTRY" \
     --workspace-root "$WORK_DIR" \
     --no-color \
     "重构数据库层"
 )"
+GATE_OUTPUT="$(
+  python3 "$RUNTIME_GATE_ENTRY" \
+    enter \
+    --workspace-root "$WORK_DIR" \
+    --request "重构数据库层"
+)"
 
 PLAN_DIR="$WORK_DIR/.sopify-skills/plan"
 STATE_FILE="$WORK_DIR/.sopify-skills/state/current_plan.json"
 HANDOFF_FILE="$WORK_DIR/.sopify-skills/state/current_handoff.json"
+GATE_RECEIPT_FILE="$WORK_DIR/.sopify-skills/state/current_gate_receipt.json"
 CLARIFICATION_BRIDGE_ENTRY="$BUNDLE_ROOT/scripts/clarification_bridge_runtime.py"
 DECISION_BRIDGE_ENTRY="$BUNDLE_ROOT/scripts/decision_bridge_runtime.py"
 DEVELOP_CHECKPOINT_ENTRY="$BUNDLE_ROOT/scripts/develop_checkpoint_runtime.py"
@@ -74,6 +89,11 @@ fi
 
 if [[ ! -f "$HANDOFF_FILE" ]]; then
   echo "Smoke check failed: missing handoff file: $HANDOFF_FILE" >&2
+  exit 1
+fi
+
+if [[ ! -f "$GATE_RECEIPT_FILE" ]]; then
+  echo "Smoke check failed: missing runtime gate receipt: $GATE_RECEIPT_FILE" >&2
   exit 1
 fi
 
@@ -114,8 +134,18 @@ if ! grep -q '"runtime_entry_guard": true' "$MANIFEST_FILE"; then
   exit 1
 fi
 
+if ! grep -q '"runtime_gate": true' "$MANIFEST_FILE"; then
+  echo "Smoke check failed: manifest is missing runtime_gate capability: $MANIFEST_FILE" >&2
+  exit 1
+fi
+
 if ! grep -q '"entry_guard"' "$MANIFEST_FILE"; then
   echo "Smoke check failed: manifest is missing limits.entry_guard contract: $MANIFEST_FILE" >&2
+  exit 1
+fi
+
+if ! grep -q '"runtime_gate_entry": "scripts/runtime_gate.py"' "$MANIFEST_FILE"; then
+  echo "Smoke check failed: manifest is missing limits.runtime_gate_entry: $MANIFEST_FILE" >&2
   exit 1
 fi
 
@@ -131,8 +161,27 @@ if [[ "$OUTPUT" != *".sopify-skills/project.md"* ]]; then
   exit 1
 fi
 
+if [[ "$GATE_OUTPUT" != *'"status": "ready"'* ]]; then
+  echo "Smoke check failed: runtime gate did not return ready status." >&2
+  printf '%s\n' "$GATE_OUTPUT" >&2
+  exit 1
+fi
+
+if [[ "$GATE_OUTPUT" != *'"gate_passed": true'* ]]; then
+  echo "Smoke check failed: runtime gate did not pass." >&2
+  printf '%s\n' "$GATE_OUTPUT" >&2
+  exit 1
+fi
+
+if [[ "$GATE_OUTPUT" != *'"allowed_response_mode": "normal_runtime_followup"'* ]]; then
+  echo "Smoke check failed: runtime gate returned unexpected response mode." >&2
+  printf '%s\n' "$GATE_OUTPUT" >&2
+  exit 1
+fi
+
 echo "Runtime smoke check passed:"
 echo "  bundle root: $BUNDLE_ROOT"
 echo "  manifest:    $MANIFEST_FILE"
 echo "  handoff:     $HANDOFF_FILE"
+echo "  gate receipt:$GATE_RECEIPT_FILE"
 echo "  workspace:   $WORK_DIR"

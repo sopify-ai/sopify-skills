@@ -3558,11 +3558,14 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue((bundle_root / "runtime" / "develop_checkpoint.py").exists())
             self.assertTrue((bundle_root / "runtime" / "execution_confirm.py").exists())
             self.assertTrue((bundle_root / "runtime" / "decision_bridge.py").exists())
+            self.assertTrue((bundle_root / "runtime" / "gate.py").exists())
+            self.assertTrue((bundle_root / "runtime" / "workspace_preflight.py").exists())
             self.assertTrue((bundle_root / "scripts" / "check-runtime-smoke.sh").exists())
             self.assertTrue((bundle_root / "scripts" / "clarification_bridge_runtime.py").exists())
             self.assertTrue((bundle_root / "scripts" / "develop_checkpoint_runtime.py").exists())
             self.assertTrue((bundle_root / "scripts" / "decision_bridge_runtime.py").exists())
             self.assertTrue((bundle_root / "scripts" / "preferences_preload_runtime.py").exists())
+            self.assertTrue((bundle_root / "scripts" / "runtime_gate.py").exists())
             self.assertTrue((bundle_root / "tests" / "test_runtime.py").exists())
             self.assertTrue(manifest_path.exists())
 
@@ -3585,6 +3588,7 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue(manifest["capabilities"]["execution_gate"])
             self.assertTrue(manifest["capabilities"]["planning_mode_orchestrator"])
             self.assertTrue(manifest["capabilities"]["preferences_preload"])
+            self.assertTrue(manifest["capabilities"]["runtime_gate"])
             self.assertTrue(manifest["capabilities"]["runtime_entry_guard"])
             self.assertTrue(manifest["capabilities"]["writes_decision_file"])
             self.assertIn("plan_only", manifest["limits"]["host_required_routes"])
@@ -3615,6 +3619,12 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(
                 manifest["limits"]["preferences_preload_statuses"],
                 ["loaded", "missing", "invalid", "read_error"],
+            )
+            self.assertEqual(manifest["limits"]["runtime_gate_entry"], "scripts/runtime_gate.py")
+            self.assertEqual(manifest["limits"]["runtime_gate_contract_version"], "1")
+            self.assertEqual(
+                manifest["limits"]["runtime_gate_allowed_response_modes"],
+                ["normal_runtime_followup", "checkpoint_only", "error_visible_retry"],
             )
             self.assertIn("model-compare", manifest["limits"]["runtime_payload_required_skill_ids"])
             self.assertEqual(len(manifest["builtin_skills"]), 7)
@@ -3653,8 +3663,31 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(preload_payload["status"], "ready")
             self.assertEqual(preload_payload["preferences"]["status"], "loaded")
             self.assertIn("严谨输出。", preload_payload["preferences"]["injection_text"])
+
+            runtime_gate_script = bundle_root / "scripts" / "runtime_gate.py"
+            gated = subprocess.run(
+                [
+                    sys.executable,
+                    str(runtime_gate_script),
+                    "enter",
+                    "--workspace-root",
+                    str(workspace),
+                    "--request",
+                    "重构数据库层",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(gated.returncode, 0, msg=gated.stderr)
+            gate_payload = json.loads(gated.stdout)
+            self.assertEqual(gate_payload["status"], "ready")
+            self.assertTrue(gate_payload["gate_passed"])
+            self.assertEqual(gate_payload["allowed_response_mode"], "normal_runtime_followup")
+            self.assertEqual(gate_payload["handoff"]["required_host_action"], "continue_host_workflow")
             self.assertIn(".sopify-skills/plan/", completed.stdout)
             self.assertTrue((workspace / ".sopify-skills" / "state" / "current_handoff.json").exists())
+            self.assertTrue((workspace / ".sopify-skills" / "state" / "current_gate_receipt.json").exists())
             self.assertTrue((workspace / ".sopify-skills" / "state" / "current_plan.json").exists())
             self.assertTrue((workspace / ".sopify-skills" / "replay" / "sessions").exists())
             self.assertTrue((workspace / ".sopify-skills" / "project.md").exists())

@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--20.141842-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--20.183348-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
@@ -106,6 +106,10 @@ bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
 - `.sopify-runtime/` 保持 `runtime/` + `scripts/` + `tests/` 的自包含布局
 - `.sopify-runtime/manifest.json` 是 bundle 的机器契约；宿主接入必须优先读取 manifest，再回退到默认脚本路径
 - vendored 入口默认是 `.sopify-runtime/scripts/sopify_runtime.py`
+- 当 Sopify 被触发后，宿主第一跳必须改为 `.sopify-runtime/scripts/runtime_gate.py enter`；实际 helper 路径与 contract version 以 `manifest.json -> limits.runtime_gate_entry / limits.runtime_gate_contract_version` 为准
+- 只有当 gate 返回 `status=ready`、`gate_passed=true`、`evidence.handoff_found=true`、`evidence.strict_runtime_entry=true` 时，宿主才可声称“已进入 runtime”并继续普通阶段
+- `evidence.handoff_found` 的含义固定为：`current_handoff.json` 已成功落盘；runtime 内存中的 handoff 只可作为 normalize fallback，不可单独作为通过证据
+- `.sopify-skills/state/current_gate_receipt.json` 只用于 smoke / debug / doctor 可见性，不是宿主主链路 machine truth；主 machine truth 仍是 `current_handoff.json`
 - plan-only orchestrator 对应 `.sopify-runtime/scripts/go_plan_runtime.py`
 - `answer_questions` 命中后可选使用内部 helper `.sopify-runtime/scripts/clarification_bridge_runtime.py` 读取/写回轻量 clarification form；它不是新的主入口
 - manifest 会通过 `limits.clarification_bridge_entry` 与 `limits.clarification_bridge_hosts` 暴露该 helper 与宿主桥接提示
@@ -116,6 +120,7 @@ bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
 - `answer_questions / confirm_decision / confirm_execute` 命中时，handoff 会优先附带标准化 `checkpoint_request`
 - builtin skill 发现由 `runtime/builtin_catalog.py` 负责，不依赖 bundle 内再携带 `Codex/Skills` 或 `Claude/Skills` 文档目录
 - 非闭环路由现在会写入 `.sopify-skills/state/current_handoff.json`，`Next:` 文案优先基于 handoff contract 渲染
+- 后续 `codex/claude` host bridge 与 Cursor 插件都应复用同一个 runtime gate core，而不是各自复制 ingress 逻辑
 
 ### 长期偏好预载入
 
@@ -188,6 +193,9 @@ python3 scripts/check-install-payload-bundle-smoke.py \
 # 默认原始输入入口
 python3 scripts/sopify_runtime.py "重构数据库层"
 
+# prompt-level runtime gate 入口
+python3 scripts/runtime_gate.py enter --workspace-root . --request "重构数据库层"
+
 # 显式命令也走同一个通用入口
 python3 scripts/sopify_runtime.py "~go plan 重构数据库层"
 
@@ -215,6 +223,7 @@ bash scripts/check-runtime-smoke.sh
 - 更新 `.sopify-skills/state/`
 - 在命中主动记录策略时写入 `.sopify-skills/replay/`
 - 终端输出 Sopify 统一摘要，而不是原始结构化对象
+- `runtime_gate.py` 返回结构化 gate contract，并在需要时写出 `.sopify-skills/state/current_gate_receipt.json`
 
 当前边界：
 
@@ -238,6 +247,9 @@ bash scripts/check-runtime-smoke.sh
 - 若 runtime skill 或 develop callback 暴露结构化 tradeoff 信号但缺失可用 `checkpoint_request`，系统会输出 reason code `checkpoint_request_missing_but_tradeoff_detected` 并按 fail-closed 处理，防止“看起来有决策点但未进入标准 checkpoint 主链”的假闭环
 - runtime 现已支持第一版 develop-first callback：宿主继续负责写代码，但开发中一旦出现用户拍板分叉，必须先通过 `runtime/develop_checkpoint.py + scripts/develop_checkpoint_runtime.py` 归一化为标准化 checkpoint，再复用既有 clarification / decision / resume 主链
 - runtime 现已支持第一版 execution gate：plan 物化后会写入 machine contract，区分 `plan_generated` 与 `ready_for_execution`，不再只靠 `Next:` 文案暗示
+- prompt-level runtime gate 已收口为 Layer 1 稳定层；它约束宿主必须先消费 gate contract，但不等同于宿主级硬入口
+- `scripts/check-prompt-runtime-gate-smoke.py` 验证的是 Layer 1 gate contract 与 fail-closed 行为；`scripts/check-runtime-smoke.sh` 继续只验证 bundle/runtime 资产完整性，不证明宿主第一跳顺序
+- 宿主级 first-hop ingress proof 与 doctor/smoke 仍属于下一层 host bridge 方案，不在当前发布切片内
 - runtime 现已支持第一版 execution confirm：gate ready 后会统一输出 `execution_confirm_pending` handoff，写入 `confirm_execute` machine action 与最小执行摘要
 - `go_plan_runtime.py` 现已默认自动消费 planning-mode 的 clarification / decision；若无法获得输入或桥接不完整，会 fail-closed 退出；仅 `--no-bridge-loop` 保留单次调试语义
 - `~compare` 在至少返回 2 个成功结果时，会在 `current_handoff.json.artifacts.compare_decision_contract` 中附带 shortlist facade，供宿主复用 `DecisionCheckpoint` 形态的选择 UI；当前不会自动改写成主链路 `current_decision.json`

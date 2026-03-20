@@ -53,6 +53,7 @@ TESTS_SRC="$ROOT_DIR/tests"
 required_paths=(
   "$RUNTIME_SRC"
   "$SCRIPTS_SRC/sopify_runtime.py"
+  "$SCRIPTS_SRC/runtime_gate.py"
   "$SCRIPTS_SRC/go_plan_runtime.py"
   "$SCRIPTS_SRC/clarification_bridge_runtime.py"
   "$SCRIPTS_SRC/develop_checkpoint_runtime.py"
@@ -78,6 +79,7 @@ rsync -a --delete --exclude '__pycache__/' --exclude '*.pyc' "$RUNTIME_SRC/" "$B
 mkdir -p "$BUNDLE_DIR/scripts" "$BUNDLE_DIR/tests"
 rsync -a --delete --prune-empty-dirs \
   --include='sopify_runtime.py' \
+  --include='runtime_gate.py' \
   --include='go_plan_runtime.py' \
   --include='clarification_bridge_runtime.py' \
   --include='develop_checkpoint_runtime.py' \
@@ -103,6 +105,7 @@ PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" \
 
 chmod +x \
   "$BUNDLE_DIR/scripts/sopify_runtime.py" \
+  "$BUNDLE_DIR/scripts/runtime_gate.py" \
   "$BUNDLE_DIR/scripts/go_plan_runtime.py" \
   "$BUNDLE_DIR/scripts/clarification_bridge_runtime.py" \
   "$BUNDLE_DIR/scripts/develop_checkpoint_runtime.py" \
@@ -120,6 +123,7 @@ Synced Sopify runtime bundle:
 
 Launch examples:
   python3 $BUNDLE_DIR/scripts/sopify_runtime.py --workspace-root $TARGET_ROOT "重构数据库层"
+  python3 $BUNDLE_DIR/scripts/runtime_gate.py enter --workspace-root $TARGET_ROOT --request "重构数据库层"
   python3 $BUNDLE_DIR/scripts/go_plan_runtime.py --workspace-root $TARGET_ROOT "重构数据库层"
   python3 -m unittest $BUNDLE_DIR/tests/test_runtime.py
   bash $BUNDLE_DIR/scripts/check-runtime-smoke.sh

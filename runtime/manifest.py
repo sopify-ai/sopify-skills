@@ -34,6 +34,7 @@ DECISION_BRIDGE_ENTRY = "scripts/decision_bridge_runtime.py"
 CLARIFICATION_BRIDGE_ENTRY = "scripts/clarification_bridge_runtime.py"
 DEVELOP_CHECKPOINT_ENTRY = "scripts/develop_checkpoint_runtime.py"
 PREFERENCES_PRELOAD_ENTRY = "scripts/preferences_preload_runtime.py"
+RUNTIME_GATE_ENTRY = "scripts/runtime_gate.py"
 _SOPIFY_VERSION_RE = re.compile(r"^<!--\s*SOPIFY_VERSION:\s*(?P<version>.+?)\s*-->$", re.MULTILINE)
 _CHANGELOG_VERSION_RE = re.compile(r"^## \[(?P<version>[^\]]+)\]", re.MULTILINE)
 
@@ -138,6 +139,7 @@ def build_bundle_manifest(
             "execution_gate": True,
             "planning_mode_orchestrator": True,
             "preferences_preload": True,
+            "runtime_gate": True,
             "runtime_entry_guard": True,
             "replay_capture": True,
             "writes_clarification_file": True,
@@ -215,6 +217,13 @@ def build_bundle_manifest(
             "preferences_preload_entry": PREFERENCES_PRELOAD_ENTRY,
             "preferences_preload_contract_version": "1",
             "preferences_preload_statuses": list(PREFERENCES_PRELOAD_STATUSES),
+            "runtime_gate_entry": RUNTIME_GATE_ENTRY,
+            "runtime_gate_contract_version": "1",
+            "runtime_gate_allowed_response_modes": [
+                "normal_runtime_followup",
+                "checkpoint_only",
+                "error_visible_retry",
+            ],
         },
     )
 
