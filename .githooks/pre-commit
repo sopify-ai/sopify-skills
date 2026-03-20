@@ -13,13 +13,6 @@ fi
 STATE_FILE="$(git -C "$ROOT_DIR" rev-parse --git-path .sopify-release-sync-state)"
 rm -f "$STATE_FILE"
 
-# `git commit --amend --no-edit` exposes the previous message here; keep the
-# existing stamped version instead of silently bumping release metadata again.
-MESSAGE_FILE="$(git -C "$ROOT_DIR" rev-parse --git-path COMMIT_EDITMSG)"
-if [[ -f "$MESSAGE_FILE" ]] && grep -Eiq '^Release-Version:\s*' "$MESSAGE_FILE"; then
-  exit 0
-fi
-
 is_release_relevant_file() {
   local path="$1"
   case "$path" in

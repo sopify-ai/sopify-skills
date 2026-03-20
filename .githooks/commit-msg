@@ -15,23 +15,42 @@ if [[ -z "$ROOT_DIR" || ! -d "$ROOT_DIR" ]]; then
   exit 0
 fi
 
-append_trailer() {
+upsert_trailer() {
   local file="$1"
   local key="$2"
   local value="$3"
+  local tmp_file
+
+  tmp_file="$(mktemp "${TMPDIR:-/tmp}/sopify-commit-msg.XXXXXX")"
   if grep -Eiq "^${key}:\s*" "$file"; then
+    awk -v key="$key" -v value="$value" '
+      BEGIN { updated=0 }
+      {
+        if ($0 ~ ("^" key ":")) {
+          print key ": " value
+          updated=1
+        } else {
+          print
+        }
+      }
+      END {
+        if (!updated) {
+          exit 2
+        }
+      }
+    ' "$file" >"$tmp_file" || {
+      rm -f "$tmp_file"
+      echo "[sopify-release-hook] Failed to update trailer ${key} in $file" >&2
+      exit 1
+    }
+    mv "$tmp_file" "$file"
     return 0
   fi
+
   printf '\n%s: %s\n' "$key" "$value" >>"$file"
 }
 
 STATE_FILE="$(git -C "$ROOT_DIR" rev-parse --git-path .sopify-release-sync-state)"
-
-# Avoid duplicate trailers when amending a commit already stamped by this hook.
-if grep -Eiq '^Release-Version:\s*' "$MESSAGE_FILE"; then
-  rm -f "$STATE_FILE"
-  exit 0
-fi
 
 if [[ ! -f "$STATE_FILE" ]]; then
   exit 0
@@ -56,8 +75,8 @@ if [[ -z "$RELEASE_VERSION" || -z "$RELEASE_DATE" ]]; then
   exit 1
 fi
 
-append_trailer "$MESSAGE_FILE" "Release-Sync" "yes"
-append_trailer "$MESSAGE_FILE" "Release-Version" "$RELEASE_VERSION"
-append_trailer "$MESSAGE_FILE" "Release-Date" "$RELEASE_DATE"
+upsert_trailer "$MESSAGE_FILE" "Release-Sync" "yes"
+upsert_trailer "$MESSAGE_FILE" "Release-Version" "$RELEASE_VERSION"
+upsert_trailer "$MESSAGE_FILE" "Release-Date" "$RELEASE_DATE"
 
 rm -f "$STATE_FILE"
