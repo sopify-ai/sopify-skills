@@ -811,6 +811,7 @@ class PlanArtifact:
     path: str
     files: tuple[str, ...]
     created_at: str
+    topic_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -821,6 +822,7 @@ class PlanArtifact:
             "path": self.path,
             "files": list(self.files),
             "created_at": self.created_at,
+            "topic_key": self.topic_key,
         }
 
     @classmethod
@@ -833,6 +835,7 @@ class PlanArtifact:
             path=str(data.get("path") or ""),
             files=tuple(data.get("files") or ()),
             created_at=str(data.get("created_at") or ""),
+            topic_key=str(data.get("topic_key") or data.get("feature_key") or ""),
         )
 
 

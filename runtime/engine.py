@@ -30,7 +30,11 @@ from .finalize import finalize_plan
 from .handoff import build_runtime_handoff
 from .kb import bootstrap_kb, ensure_blueprint_index, ensure_blueprint_scaffold
 from .models import ClarificationState, DecisionState, ExecutionGate, KbArtifact, PlanArtifact, ReplayEvent, RouteDecision, RunState, RuntimeHandoff, RuntimeResult, SkillActivation, SkillMeta
-from .plan_scaffold import create_plan_scaffold
+from .plan_scaffold import (
+    create_plan_scaffold,
+    find_plan_by_request_reference,
+    request_explicitly_wants_new_plan,
+)
 from .replay import ReplayWriter, build_compare_replay_event, build_decision_replay_event
 from .router import Router
 from .skill_registry import SkillRegistry
@@ -1197,7 +1201,11 @@ def _advance_planning_route(
         pending_decision = _build_route_native_decision_state(decision, config=config)
         if pending_decision is not None:
             state_store.set_current_decision(pending_decision)
-            state_store.clear_current_plan()
+            _preserve_or_clear_current_plan_for_pending_decision(
+                decision,
+                state_store=state_store,
+                config=config,
+            )
             decision_gate = evaluate_execution_gate(
                 decision=decision,
                 plan_artifact=None,
@@ -1216,20 +1224,21 @@ def _advance_planning_route(
             return (
                 _decision_pending_route(decision, reason="Detected an explicit design split that requires confirmation"),
                 None,
-                notes,
-                kb_artifact,
-            )
+            notes,
+            kb_artifact,
+        )
 
     level = decision.plan_level or _default_plan_level(decision)
-    plan_artifact = create_plan_scaffold(
-        decision.request_text,
+    plan_artifact, plan_notes = _select_plan_for_request(
+        decision,
+        state_store=state_store,
         config=config,
         level=level,
-        decision_state=confirmed_decision,
+        confirmed_decision=confirmed_decision,
     )
     state_store.set_current_plan(plan_artifact)
     kb_artifact = _merge_kb_artifacts(kb_artifact, ensure_blueprint_index(config), config=config)
-    notes.append(f"Plan scaffold created at {plan_artifact.path}")
+    notes.extend(plan_notes)
 
     routed_decision, plan_artifact, gate_notes = _apply_execution_gate_to_plan(
         decision,
@@ -1240,6 +1249,73 @@ def _advance_planning_route(
     )
     notes.extend(gate_notes)
     return (routed_decision, plan_artifact, notes, kb_artifact)
+
+
+def _select_plan_for_request(
+    decision: RouteDecision,
+    *,
+    state_store: StateStore,
+    config: RuntimeConfig,
+    level: str,
+    confirmed_decision: DecisionState | None,
+) -> tuple[PlanArtifact, list[str]]:
+    if confirmed_decision is not None:
+        created = create_plan_scaffold(
+            decision.request_text,
+            config=config,
+            level=level,
+            decision_state=confirmed_decision,
+        )
+        return created, [f"Plan scaffold created at {created.path}"]
+
+    current_plan = state_store.get_current_plan()
+    explicit_new_plan = request_explicitly_wants_new_plan(decision.request_text)
+    explicit_plan = find_plan_by_request_reference(decision.request_text, config=config)
+
+    if explicit_new_plan:
+        created = create_plan_scaffold(
+            decision.request_text,
+            config=config,
+            level=level,
+            decision_state=None,
+        )
+        return created, [f"Plan scaffold created at {created.path} (explicit new-plan request)"]
+
+    if explicit_plan is not None:
+        if current_plan is not None and explicit_plan.plan_id == current_plan.plan_id:
+            return current_plan, [f"Reused active plan {current_plan.path} (explicit self-reference)"]
+        return explicit_plan, [f"Rebound planning context to existing plan {explicit_plan.path} (explicit plan reference)"]
+
+    if current_plan is not None:
+        return current_plan, [f"Reused active plan {current_plan.path} under strict single-active-plan policy"]
+
+    created = create_plan_scaffold(
+        decision.request_text,
+        config=config,
+        level=level,
+        decision_state=None,
+    )
+    return created, [f"Plan scaffold created at {created.path}"]
+
+
+def _preserve_or_clear_current_plan_for_pending_decision(
+    decision: RouteDecision,
+    *,
+    state_store: StateStore,
+    config: RuntimeConfig,
+) -> None:
+    current_plan = state_store.get_current_plan()
+    if current_plan is None:
+        return
+
+    if request_explicitly_wants_new_plan(decision.request_text):
+        state_store.clear_current_plan()
+        return
+
+    explicit_plan = find_plan_by_request_reference(decision.request_text, config=config)
+    if explicit_plan is not None and explicit_plan.plan_id != current_plan.plan_id:
+        state_store.set_current_plan(explicit_plan)
+        return
 
 
 def _apply_execution_gate_to_plan(

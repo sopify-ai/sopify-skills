@@ -364,7 +364,7 @@ class RouterTests(unittest.TestCase):
                 DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
             )
 
-    def test_consult_guard_for_protected_plan_assets_forces_runtime_first(self) -> None:
+    def test_plan_meta_review_for_protected_plan_assets_prefers_consult(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
             config = load_runtime_config(workspace)
@@ -378,12 +378,9 @@ class RouterTests(unittest.TestCase):
                 skills=skills,
             )
 
-            self.assertEqual(route.route_name, "workflow")
-            self.assertIn("protected .sopify-skills/plan assets", route.reason)
-            self.assertEqual(
-                route.artifacts.get("entry_guard_reason_code"),
-                DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
-            )
+            self.assertEqual(route.route_name, "consult")
+            self.assertFalse(route.should_create_plan)
+            self.assertIn("meta-review", route.reason)
 
     def test_consult_guard_falls_back_when_tradeoff_or_long_term_split_detected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -402,6 +399,23 @@ class RouterTests(unittest.TestCase):
                 route.artifacts.get("entry_guard_reason_code"),
                 DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
             )
+
+    def test_active_plan_meta_review_bypasses_runtime_first_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            plan_artifact = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(plan_artifact)
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("分析下这个方案的评分、风险和还有什么需要我决策", skills=skills)
+
+            self.assertEqual(route.route_name, "consult")
+            self.assertTrue(route.should_recover_context)
+            self.assertFalse(route.should_create_plan)
 
     def test_ready_plan_routes_continue_and_exec_into_execution_confirm(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1810,6 +1824,142 @@ class PlanScaffoldTests(unittest.TestCase):
 
             self.assertNotEqual(first.path, second.path)
             self.assertTrue(second.path.endswith("-2"))
+
+    def test_plan_scaffold_persists_topic_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+
+            artifact = create_plan_scaffold("补 runtime 骨架", config=config, level="standard")
+            tasks_text = (workspace / artifact.path / "tasks.md").read_text(encoding="utf-8")
+
+            self.assertEqual(artifact.topic_key, "runtime")
+            self.assertIn("feature_key: runtime", tasks_text)
+
+
+class PlanReuseRuntimeTests(unittest.TestCase):
+    def test_planning_reuses_active_plan_under_single_active_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                "~go plan 把 promotion gate 写进 plan",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertEqual(result.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertTrue(any("strict single-active-plan policy" in note for note in result.notes))
+            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 1)
+
+    def test_explicit_plan_reference_rebinds_current_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            target_plan = create_plan_scaffold("补 runtime 骨架", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                f"~go plan 切到 {target_plan.plan_id} 继续评审",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertEqual(result.plan_artifact.plan_id, target_plan.plan_id)
+            rebound = StateStore(load_runtime_config(workspace)).get_current_plan()
+            self.assertIsNotNone(rebound)
+            assert rebound is not None
+            self.assertEqual(rebound.plan_id, target_plan.plan_id)
+
+    def test_no_active_plan_does_not_auto_reuse_topic_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            create_plan_scaffold("补 runtime 骨架", config=config, level="standard")
+            store = StateStore(config)
+            store.ensure()
+            store.clear_current_plan()
+
+            result = run_runtime(
+                "~go plan 补 runtime 骨架",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertEqual(result.plan_artifact.topic_key, "runtime")
+            self.assertFalse(any("topic_key=runtime" in note for note in result.notes))
+            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 2)
+
+    def test_meta_review_request_does_not_create_new_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                "分析下这个方案的评分、风险和还有什么优化点",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "consult")
+            self.assertIsNone(result.plan_artifact)
+            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 1)
+            rebound = StateStore(load_runtime_config(workspace)).get_current_plan()
+            self.assertIsNotNone(rebound)
+            assert rebound is not None
+            self.assertEqual(rebound.plan_id, current_plan.plan_id)
+
+    def test_decision_resume_reuses_existing_active_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold(
+                "payload 放 host root 还是 workspace/.sopify-runtime",
+                config=config,
+                level="standard",
+            )
+            store.set_current_plan(current_plan)
+
+            first = run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+            second = run_runtime(
+                "1",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(first.route.route_name, "decision_pending")
+            self.assertIsNotNone(second.plan_artifact)
+            assert second.plan_artifact is not None
+            self.assertEqual(second.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 1)
+            rebound = StateStore(load_runtime_config(workspace)).get_current_plan()
+            self.assertIsNotNone(rebound)
+            assert rebound is not None
+            self.assertEqual(rebound.plan_id, current_plan.plan_id)
 
 
 class ExecutionGateTests(unittest.TestCase):

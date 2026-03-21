@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
 import re
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Mapping, Sequence
 
+from ._yaml import YamlParseError, load_yaml
 from .decision import option_by_id
 from .knowledge_sync import render_knowledge_sync_front_matter
 from .models import DecisionState, PlanArtifact, RuntimeConfig
 from .state import iso_now
+
+_FRONT_MATTER_RE = re.compile(r"\A---\n(?P<front>.*?)\n---\n(?P<body>.*)\Z", re.DOTALL)
+_PLAN_REFERENCE_RE = re.compile(r"(?P<plan_id>\d{8}_[a-z0-9][a-z0-9_.-]*)", re.IGNORECASE)
+_EXPLICIT_NEW_PLAN_PATTERNS = (
+    re.compile(r"\bnew\s+plan\b", re.IGNORECASE),
+    re.compile(r"\bcreate\s+(?:a\s+)?new\s+plan\b", re.IGNORECASE),
+    re.compile(r"新\s*plan", re.IGNORECASE),
+    re.compile(r"新的\s*plan", re.IGNORECASE),
+    re.compile(r"另起(?:一个)?\s*plan", re.IGNORECASE),
+    re.compile(r"新增(?:一个)?\s*plan", re.IGNORECASE),
+    re.compile(r"其他\s*plan", re.IGNORECASE),
+)
 
 
 def create_plan_scaffold(
@@ -35,7 +48,8 @@ def create_plan_scaffold(
         raise ValueError(f"Unsupported plan level: {level}")
 
     title = _derive_title(request_text)
-    plan_id = _make_plan_id(title, plan_root=config.plan_root)
+    topic_key = derive_topic_key(request_text)
+    plan_id = _make_plan_id(topic_key, plan_root=config.plan_root)
     plan_dir = config.plan_root / plan_id
     plan_dir.mkdir(parents=True, exist_ok=False)
 
@@ -49,7 +63,7 @@ def create_plan_scaffold(
                 title,
                 summary,
                 plan_id=plan_id,
-                feature_key=_feature_key_from_plan_id(plan_id),
+                feature_key=topic_key,
                 decision_state=decision_state,
             ),
             encoding="utf-8",
@@ -65,7 +79,7 @@ def create_plan_scaffold(
             _render_tasks(
                 title,
                 plan_id=plan_id,
-                feature_key=_feature_key_from_plan_id(plan_id),
+                feature_key=topic_key,
                 level=level,
                 decision_state=decision_state,
             ),
@@ -93,6 +107,7 @@ def create_plan_scaffold(
         path=str(plan_dir.relative_to(config.workspace_root)),
         files=tuple(files),
         created_at=iso_now(),
+        topic_key=topic_key,
     )
 
 
@@ -106,12 +121,83 @@ def _derive_title(request_text: str) -> str:
     return first_line[:45].rstrip() + "..."
 
 
-def _make_plan_id(title: str, *, plan_root: Path) -> str:
+def derive_topic_key(request_text: str) -> str:
+    cleaned = " ".join(request_text.split())
+    if not cleaned:
+        return "task"
+    normalized = _slugify(cleaned)[:48].rstrip("-")
+    if normalized:
+        return normalized
+    return f"task-{sha1(cleaned.encode('utf-8')).hexdigest()[:6]}"
+
+
+def request_explicitly_wants_new_plan(request_text: str) -> bool:
+    return any(pattern.search(request_text) is not None for pattern in _EXPLICIT_NEW_PLAN_PATTERNS)
+
+
+def find_plan_by_request_reference(request_text: str, *, config: RuntimeConfig) -> PlanArtifact | None:
+    for match in _PLAN_REFERENCE_RE.finditer(request_text):
+        plan_id = (match.group("plan_id") or "").strip()
+        if not plan_id:
+            continue
+        artifact = load_plan_artifact(config.plan_root / plan_id, config=config)
+        if artifact is not None:
+            return artifact
+    return None
+
+
+def find_plan_by_topic_key(topic_key: str, *, config: RuntimeConfig) -> PlanArtifact | None:
+    matches: list[PlanArtifact] = []
+    plan_root = config.plan_root
+    if not plan_root.exists():
+        return None
+    for plan_dir in sorted(plan_root.iterdir()):
+        artifact = load_plan_artifact(plan_dir, config=config)
+        if artifact is None:
+            continue
+        candidate_topic_key = artifact.topic_key or derive_topic_key(artifact.title)
+        if candidate_topic_key == topic_key:
+            matches.append(artifact)
+            if len(matches) > 1:
+                return None
+    return matches[0] if len(matches) == 1 else None
+
+
+def load_plan_artifact(plan_dir: Path, *, config: RuntimeConfig) -> PlanArtifact | None:
+    if not plan_dir.exists() or not plan_dir.is_dir():
+        return None
+
+    metadata_path = _pick_metadata_file(plan_dir)
+    if metadata_path is None:
+        return None
+
+    metadata, body = _load_plan_metadata(metadata_path)
+    if metadata is None:
+        return None
+
+    plan_id = str(metadata.get("plan_id") or plan_dir.name)
+    level = str(metadata.get("level") or ("light" if metadata_path.name == "plan.md" else "standard"))
+    title = _extract_title(body) or plan_id
+    summary = _extract_summary(body, fallback=title)
+    topic_key = str(metadata.get("topic_key") or metadata.get("feature_key") or derive_topic_key(title))
+    files = tuple(str(path.relative_to(config.workspace_root)) for path in _collect_plan_files(plan_dir))
+    created_at = _path_created_at(metadata_path)
+
+    return PlanArtifact(
+        plan_id=plan_id,
+        title=title,
+        summary=summary,
+        level=level,
+        path=str(plan_dir.relative_to(config.workspace_root)),
+        files=files,
+        created_at=created_at,
+        topic_key=topic_key,
+    )
+
+
+def _make_plan_id(topic_key: str, *, plan_root: Path) -> str:
     date_prefix = datetime.now().strftime("%Y%m%d")
-    slug = _slugify(title)
-    if slug == "task":
-        slug = f"task-{sha1(title.encode('utf-8')).hexdigest()[:6]}"
-    base = f"{date_prefix}_{slug}"
+    base = f"{date_prefix}_{topic_key}"
     candidate = base
     suffix = 2
     while (plan_root / candidate).exists():
@@ -123,13 +209,6 @@ def _make_plan_id(title: str, *, plan_root: Path) -> str:
 def _slugify(value: str) -> str:
     ascii_slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return ascii_slug or "task"
-
-
-def _feature_key_from_plan_id(plan_id: str) -> str:
-    parts = plan_id.split("_", 1)
-    return parts[1] if len(parts) == 2 else plan_id
-
-
 def _render_light_plan(title: str, summary: str, *, plan_id: str, feature_key: str, decision_state: DecisionState | None) -> str:
     return (
         _render_plan_front_matter(plan_id=plan_id, feature_key=feature_key, level="light", decision_state=decision_state)
@@ -256,3 +335,58 @@ def _render_decision_section(decision_state: DecisionState | None) -> str:
         "- 候选方案:\n"
         f"{options}\n\n"
     )
+
+
+def _pick_metadata_file(plan_dir: Path) -> Path | None:
+    for filename in ("plan.md", "tasks.md"):
+        candidate = plan_dir / filename
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_plan_metadata(metadata_path: Path) -> tuple[Mapping[str, object] | None, str]:
+    raw_text = metadata_path.read_text(encoding="utf-8")
+    match = _FRONT_MATTER_RE.match(raw_text)
+    if match is None:
+        return None, raw_text
+    front_matter = match.group("front")
+    body = match.group("body")
+    try:
+        metadata = load_yaml(front_matter)
+    except YamlParseError:
+        return None, body
+    if not isinstance(metadata, Mapping):
+        return None, body
+    return metadata, body
+
+
+def _collect_plan_files(plan_dir: Path) -> list[Path]:
+    collected: list[Path] = []
+    for child in sorted(plan_dir.iterdir()):
+        collected.append(child)
+    return collected
+
+
+def _extract_title(body: str) -> str:
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            return stripped[2:].strip()
+    return ""
+
+
+def _extract_summary(body: str, *, fallback: str) -> str:
+    lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if not lines:
+        return fallback
+    for index, line in enumerate(lines):
+        if line.startswith("# "):
+            if index + 1 < len(lines):
+                return lines[index + 1]
+            break
+    return lines[0]
+
+
+def _path_created_at(path: Path) -> str:
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).replace(microsecond=0).isoformat()

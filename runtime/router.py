@@ -116,6 +116,18 @@ _LONG_TERM_CONTRACT_HINTS = (
     "slo",
     "长期",
 )
+_PLAN_META_REVIEW_PATTERNS = (
+    re.compile(r"(分析下|评估下|解释下|看看|review|critique|score|评分|打分|风险|risk|优化点|还需要我.*决策|还有什么.*决策)", re.IGNORECASE),
+    re.compile(r"(当前状态|现在状态|状态如何|有什么问题|还有什么问题)", re.IGNORECASE),
+)
+_PLAN_META_REVIEW_ANCHORS = (
+    re.compile(r"(这个|当前|该)\s*(方案|plan)", re.IGNORECASE),
+    re.compile(r"\bplan\b", re.IGNORECASE),
+    re.compile(r"方案", re.IGNORECASE),
+)
+_PLAN_META_REVIEW_EDIT_PATTERNS = (
+    re.compile(r"(整理|更新|同步|写入|落地|修改|实现|修复|补充|重写|合并|merge|edit|change|update)", re.IGNORECASE),
+)
 
 
 @dataclass(frozen=True)
@@ -257,6 +269,14 @@ class Router:
                 should_recover_context=False,
                 runtime_skill_id=_runtime_skill("compare", skills, "model-compare"),
             )
+
+        meta_review_route = _classify_plan_meta_review(
+            text,
+            current_plan=current_plan,
+            skills=skills,
+        )
+        if meta_review_route is not None:
+            return self._with_capture(meta_review_route)
 
         runtime_first_guard = match_runtime_first_guard(text)
         if runtime_first_guard is not None:
@@ -660,6 +680,24 @@ def _estimate_complexity(text: str) -> _ComplexitySignal:
     return _ComplexitySignal("medium", "Defaulted to medium because the request is action-oriented but underspecified", "light")
 
 
+def _classify_plan_meta_review(
+    text: str,
+    *,
+    current_plan,
+    skills: Iterable[SkillMeta],
+) -> RouteDecision | None:
+    if not _looks_like_plan_meta_review(text, current_plan=current_plan):
+        return None
+    return RouteDecision(
+        route_name="consult",
+        request_text=text,
+        reason="Matched plan meta-review intent and bypassed new-plan scaffold creation",
+        complexity="simple",
+        should_recover_context=current_plan is not None,
+        candidate_skill_ids=_candidate_skills("consult", skills, "analyze"),
+    )
+
+
 def _is_consultation(text: str) -> bool:
     normalized = text.strip().lower()
     if not normalized:
@@ -687,6 +725,21 @@ def _has_tradeoff_or_contract_split(text: str) -> bool:
     if not split_signal:
         return False
     return any(token in lowered for token in _LONG_TERM_CONTRACT_HINTS)
+
+
+def _looks_like_plan_meta_review(text: str, *, current_plan) -> bool:
+    if not text.strip():
+        return False
+    has_plan_anchor = current_plan is not None or _is_protected_plan_asset_request(text)
+    if not has_plan_anchor:
+        return False
+    if not any(pattern.search(text) is not None for pattern in _PLAN_META_REVIEW_PATTERNS):
+        return False
+    if any(pattern.search(text) is not None for pattern in _PLAN_META_REVIEW_EDIT_PATTERNS):
+        return False
+    if _is_protected_plan_asset_request(text):
+        return True
+    return any(pattern.search(text) is not None for pattern in _PLAN_META_REVIEW_ANCHORS)
 
 
 def _contains_intent(text: str, keywords: Iterable[str]) -> bool:
