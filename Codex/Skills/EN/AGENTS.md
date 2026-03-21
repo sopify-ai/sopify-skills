@@ -1,5 +1,5 @@
 <!-- bootstrap: lang=en-US; encoding=UTF-8 -->
-<!-- SOPIFY_VERSION: 2026-03-21.160958 -->
+<!-- SOPIFY_VERSION: 2026-03-21.163146 -->
 <!-- ARCHITECTURE: Adaptive Workflow + Layered Rules -->
 
 # Sopify (Sop AI) Skills - Adaptive AI Programming Assistant
@@ -81,6 +81,8 @@ Generated At: {current time}
 - the footer always follows the `Changes` block
 - `Next:` must appear before `Generated At:`
 - When a generated time is present, `Generated At:` must be the final line.
+- `Generated At:` uses local display time in the fixed format `YYYY-MM-DD HH:MM:SS`, without a timezone suffix.
+- If a machine-auditable timestamp is needed, internal summary / replay artifacts may keep ISO 8601 timestamps with timezone data; do not copy that format into the footer.
 
 **Status Symbols:**
 | Symbol | Meaning |

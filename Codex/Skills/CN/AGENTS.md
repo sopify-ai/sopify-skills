@@ -1,5 +1,5 @@
 <!-- bootstrap: lang=zh-CN; encoding=UTF-8 -->
-<!-- SOPIFY_VERSION: 2026-03-21.160958 -->
+<!-- SOPIFY_VERSION: 2026-03-21.163146 -->
 <!-- ARCHITECTURE: Adaptive Workflow + Layered Rules -->
 
 # Sopify (Sop AI) Skills - 自适应 AI 编程助手
@@ -81,6 +81,8 @@ Next: {下一步提示}
 - footer 固定跟在 `Changes` 区块之后
 - `Next:` 必须先于 `生成时间:`
 - 若输出包含生成时间，`生成时间:` 必须作为最后一行。
+- `生成时间:` 使用本地展示时间，格式固定为 `YYYY-MM-DD HH:MM:SS`，不带时区后缀。
+- 若需要机器可审计时间戳，内部摘要 / replay 文件可继续使用 ISO 8601（可带时区）；不要把该格式直接搬到 footer。
 
 **状态符：**
 | 符号 | 含义 |

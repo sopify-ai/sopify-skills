@@ -6,6 +6,21 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-21.163146] - 2026-03-21
+
+### Changed
+
+- Updated release-relevant files:
+  - `Claude/Skills/CN/CLAUDE.md`
+  - `Claude/Skills/EN/CLAUDE.md`
+  - `Codex/Skills/CN/AGENTS.md`
+  - `Codex/Skills/EN/AGENTS.md`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_runtime.py`
+
 ## [2026-03-21.160958] - 2026-03-21
 
 ### Changed

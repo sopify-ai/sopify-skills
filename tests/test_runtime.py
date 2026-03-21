@@ -42,6 +42,7 @@ from runtime.decision_bridge import (
 )
 from runtime.decision_policy import match_decision_policy
 from runtime.decision_templates import CUSTOM_OPTION_ID, PRIMARY_OPTION_FIELD_ID, build_strategy_pick_template
+from runtime.daily_summary import render_daily_summary_markdown
 from runtime.engine import run_runtime
 from runtime.entry_guard import DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE
 from runtime.execution_gate import evaluate_execution_gate
@@ -1658,6 +1659,45 @@ class SummaryContractTests(unittest.TestCase):
         self.assertEqual(restored.facts.decisions[0].status, "confirmed")
         self.assertTrue(restored.quality_checks.replay_optional)
         self.assertEqual(restored.to_dict(), payload)
+
+    def test_daily_summary_markdown_preserves_iso_timestamp_for_internal_artifact(self) -> None:
+        artifact = DailySummaryArtifact(
+            summary_key="2026-03-19::/tmp/demo",
+            scope=SummaryScope(
+                local_day="2026-03-19",
+                workspace_root="/tmp/demo",
+                workspace_label="当前工作区",
+                timezone="Asia/Shanghai",
+            ),
+            revision=1,
+            generated_at="2026-03-19T21:21:41+08:00",
+            source_window=SummarySourceWindow(
+                from_ts="2026-03-19T00:00:00+08:00",
+                to_ts="2026-03-19T21:21:41+08:00",
+            ),
+            source_refs=SummarySourceRefs(),
+            facts=SummaryFacts(
+                headline="今天围绕当前方案推进了关键实现。",
+                goals=(),
+                decisions=(),
+                code_changes=(),
+                issues=(),
+                lessons=(),
+                next_steps=(),
+            ),
+            quality_checks=SummaryQualityChecks(
+                replay_optional=True,
+                summary_runs_per_day="1-2",
+                required_sections_present=True,
+                missing_inputs=(),
+                fallback_used=(),
+            ),
+        )
+
+        markdown = render_daily_summary_markdown(artifact=artifact, language="zh-CN")
+
+        self.assertIn("生成于: 2026-03-19T21:21:41+08:00", markdown)
+        self.assertNotIn("生成于: 2026-03-19 21:21:41", markdown)
 
 
 class PlanScaffoldTests(unittest.TestCase):
