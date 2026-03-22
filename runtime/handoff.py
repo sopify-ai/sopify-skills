@@ -33,6 +33,7 @@ _ROUTE_HANDOFF_KIND = {
     "workflow": "workflow",
     "light_iterate": "light_iterate",
     "quick_fix": "quick_fix",
+    "finalize_active": "finalize",
     "clarification_pending": "clarification",
     "clarification_resume": "clarification",
     "execution_confirm_pending": "execution_confirm",
@@ -70,9 +71,15 @@ def build_runtime_handoff(
     normalized_notes = tuple(note.strip() for note in notes if note and note.strip())
     if not normalized_notes and decision.reason:
         normalized_notes = (decision.reason,)
+    finalize_completed = _is_finalize_completed(
+        config=config,
+        decision=decision,
+        current_plan=current_plan,
+    )
     required_host_action = _required_host_action(
         decision,
         skill_result_present=bool(skill_result),
+        finalize_completed=finalize_completed,
     )
     artifacts = _collect_handoff_artifacts(
         config=config,
@@ -154,12 +161,19 @@ def write_runtime_handoff(path: Path, handoff: RuntimeHandoff) -> None:
     temp_path.replace(path)
 
 
-def _required_host_action(decision: RouteDecision, *, skill_result_present: bool) -> str:
+def _required_host_action(
+    decision: RouteDecision,
+    *,
+    skill_result_present: bool,
+    finalize_completed: bool = False,
+) -> str:
     route_name = decision.route_name
     if route_name == "plan_only":
         return "review_or_execute_plan"
     if route_name in {"workflow", "light_iterate"}:
         return "continue_host_workflow"
+    if route_name == "finalize_active":
+        return "finalize_completed" if finalize_completed else "review_or_execute_plan"
     if route_name in {"clarification_pending", "clarification_resume"}:
         return "answer_questions"
     if route_name == "execution_confirm_pending":
@@ -222,8 +236,21 @@ def _collect_handoff_artifacts(
         artifacts["execution_summary"] = execution_summary_payload.to_dict()
     if current_plan is not None and current_plan.files:
         artifacts["plan_files"] = list(current_plan.files)
+    if decision.route_name == "finalize_active" and current_plan is not None:
+        if _is_plan_archived(config=config, plan_path=current_plan.path):
+            artifacts["finalize_status"] = "completed"
+            artifacts["archived_plan_path"] = current_plan.path
+            artifacts["state_cleared"] = True
+        else:
+            artifacts["finalize_status"] = "blocked"
+            artifacts["active_plan_path"] = current_plan.path
+            artifacts["state_cleared"] = False
     if kb_artifact is not None and kb_artifact.files:
         artifacts["kb_files"] = list(kb_artifact.files)
+        if decision.route_name == "finalize_active" and artifacts.get("finalize_status") == "completed":
+            history_index = next((path for path in kb_artifact.files if path.endswith("history/index.md")), None)
+            if history_index:
+                artifacts["history_index_path"] = history_index
     if replay_session_dir:
         artifacts["replay_session_dir"] = replay_session_dir
     if skill_result:
@@ -366,8 +393,21 @@ def _should_attach_execution_summary(*, decision: RouteDecision, current_run: Ru
 
 
 def _should_emit_handoff(*, decision: RouteDecision, current_run: RunState | None, current_plan: PlanArtifact | None) -> bool:
+    if decision.route_name == "finalize_active":
+        return current_plan is not None
     if decision.route_name != "exec_plan":
         return True
     # ~go exec is an advanced recovery/debug entry; when it does not converge
     # back into the standard checkpoints, avoid emitting a misleading develop handoff.
     return False
+
+
+def _is_finalize_completed(*, config: RuntimeConfig, decision: RouteDecision, current_plan: PlanArtifact | None) -> bool:
+    if decision.route_name != "finalize_active" or current_plan is None:
+        return False
+    return _is_plan_archived(config=config, plan_path=current_plan.path)
+
+
+def _is_plan_archived(*, config: RuntimeConfig, plan_path: str) -> bool:
+    history_prefix = f"{config.plan_directory}/history/"
+    return str(plan_path or "").startswith(history_prefix)

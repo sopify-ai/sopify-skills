@@ -435,6 +435,39 @@ class RouterTests(unittest.TestCase):
             self.assertEqual(revise_route.route_name, "execution_confirm_pending")
             self.assertEqual(revise_route.active_run_action, "revise_execution")
 
+    def test_ready_plan_does_not_hijack_unrelated_requests_into_execution_confirm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, store, _ = _prepare_ready_plan_state(workspace)
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            quick_fix_route = router.classify("修改 README 里的 helper 路径说明", skills=skills)
+            consult_route = router.classify("解释一下 execution_confirm_pending 和 decision_pending 的区别", skills=skills)
+
+            self.assertEqual(quick_fix_route.route_name, "quick_fix")
+            self.assertIsNone(quick_fix_route.active_run_action)
+            self.assertEqual(consult_route.route_name, "consult")
+            self.assertIsNone(consult_route.active_run_action)
+
+    def test_question_form_a4_prefers_analyze_challenge_consult(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, store, _ = _prepare_ready_plan_state(workspace)
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify(
+                "current_handoff.json 和 current_run.json 里都有 execution gate，是否应该收敛成一个唯一机器事实源？",
+                skills=skills,
+            )
+
+            self.assertEqual(route.route_name, "consult")
+            self.assertEqual(route.artifacts.get("consult_mode"), "analyze_challenge")
+            self.assertEqual(route.artifacts.get("trigger_label"), "A4")
+            self.assertIn("analyze", route.candidate_skill_ids)
+            self.assertTrue(route.should_recover_context)
+
     def test_pending_clarification_intercepts_exec_and_accepts_answers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -1860,7 +1893,7 @@ class PlanReuseRuntimeTests(unittest.TestCase):
             self.assertIsNotNone(result.plan_artifact)
             assert result.plan_artifact is not None
             self.assertEqual(result.plan_artifact.plan_id, current_plan.plan_id)
-            self.assertTrue(any("strict single-active-plan policy" in note for note in result.notes))
+            self.assertTrue(any("implicit current-plan anchor" in note for note in result.notes))
             self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 1)
 
     def test_explicit_plan_reference_rebinds_current_plan(self) -> None:
@@ -2022,14 +2055,121 @@ class PlanReuseRuntimeTests(unittest.TestCase):
             )
 
             self.assertEqual(first.route.route_name, "decision_pending")
+            self.assertEqual(first.recovered_context.current_decision.decision_type, "architecture_choice")
             self.assertIsNotNone(second.plan_artifact)
             assert second.plan_artifact is not None
             self.assertEqual(second.plan_artifact.plan_id, current_plan.plan_id)
-            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 1)
+
+    def test_nonanchored_complex_request_with_active_plan_requires_binding_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                "~go plan 重做 runtime contract 并调整 blueprint/project 边界",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "decision_pending")
+            self.assertIsNone(result.plan_artifact)
+            self.assertEqual(result.recovered_context.current_decision.decision_type, "active_plan_binding_choice")
+            self.assertEqual(
+                {option.option_id for option in result.recovered_context.current_decision.options},
+                {"attach_current_plan", "create_new_plan"},
+            )
+            self.assertEqual(result.handoff.required_host_action, "confirm_decision")
+
+    def test_attach_current_plan_selection_reopens_current_plan_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            first = run_runtime(
+                "~go plan 重做 runtime contract 并调整 blueprint/project 边界",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+            second = run_runtime(
+                "1",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(first.route.route_name, "decision_pending")
+            self.assertEqual(second.route.route_name, "plan_only")
+            self.assertIsNotNone(second.plan_artifact)
+            assert second.plan_artifact is not None
+            self.assertEqual(second.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(second.recovered_context.current_run.stage, "plan_generated")
+            self.assertEqual(second.recovered_context.current_run.execution_gate.gate_status, "blocked")
+            self.assertEqual(second.handoff.required_host_action, "review_or_execute_plan")
+
+    def test_new_plan_selection_creates_new_scaffold_for_nonanchored_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            first = run_runtime(
+                "~go plan 重做 runtime contract 并调整 blueprint/project 边界",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+            second = run_runtime(
+                "2",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(first.route.route_name, "decision_pending")
+            self.assertEqual(second.route.route_name, "plan_only")
+            self.assertIsNotNone(second.plan_artifact)
+            assert second.plan_artifact is not None
+            self.assertNotEqual(second.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(len(list((workspace / ".sopify-skills" / "plan").iterdir())), 2)
             rebound = StateStore(load_runtime_config(workspace)).get_current_plan()
             self.assertIsNotNone(rebound)
             assert rebound is not None
-            self.assertEqual(rebound.plan_id, current_plan.plan_id)
+            self.assertEqual(rebound.plan_id, second.plan_artifact.plan_id)
+
+    def test_new_plan_selection_preserves_workflow_route_after_binding_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            first = run_runtime(
+                "~go 实现 runtime plugin bridge",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+            second = run_runtime(
+                "2",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(first.route.route_name, "decision_pending")
+            self.assertEqual(second.route.route_name, "workflow")
+            self.assertIsNotNone(second.plan_artifact)
+            assert second.plan_artifact is not None
+            self.assertNotEqual(second.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(second.handoff.required_host_action, "continue_host_workflow")
 
 
 class ExecutionGateTests(unittest.TestCase):
@@ -3494,7 +3634,13 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue(any("knowledge_sync" in note for note in result.notes))
             self.assertFalse((workspace / ".sopify-skills" / "state" / "current_plan.json").exists())
             self.assertFalse((workspace / ".sopify-skills" / "state" / "current_run.json").exists())
-            self.assertFalse((workspace / ".sopify-skills" / "state" / "current_handoff.json").exists())
+            self.assertTrue((workspace / ".sopify-skills" / "state" / "current_handoff.json").exists())
+            self.assertIsNotNone(result.handoff)
+            self.assertEqual(result.handoff.required_host_action, "finalize_completed")
+            self.assertEqual(result.handoff.handoff_kind, "finalize")
+            self.assertEqual(result.handoff.artifacts["archived_plan_path"], result.plan_artifact.path)
+            self.assertEqual(result.handoff.artifacts["history_index_path"], ".sopify-skills/history/index.md")
+            self.assertTrue(result.handoff.artifacts["state_cleared"])
 
             history_index = (workspace / ".sopify-skills" / "history" / "index.md").read_text(encoding="utf-8")
             self.assertIn(first.plan_artifact.plan_id, history_index)
@@ -3521,6 +3667,13 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue(any("knowledge_sync.required" in note for note in result.notes))
             self.assertTrue((workspace / first.plan_artifact.path).exists())
             self.assertTrue((workspace / ".sopify-skills" / "state" / "current_plan.json").exists())
+            self.assertTrue((workspace / ".sopify-skills" / "state" / "current_handoff.json").exists())
+            self.assertIsNotNone(result.handoff)
+            self.assertEqual(result.handoff.required_host_action, "review_or_execute_plan")
+            self.assertEqual(result.handoff.handoff_kind, "finalize")
+            self.assertEqual(result.handoff.artifacts["finalize_status"], "blocked")
+            self.assertEqual(result.handoff.artifacts["active_plan_path"], first.plan_artifact.path)
+            self.assertFalse(result.handoff.artifacts["state_cleared"])
 
     def test_finalize_allows_review_and_blocks_required_by_knowledge_sync(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -21,3 +21,4 @@
 - [-] 基于 replay activation 的时间线增强保留后续能力，不进入首版交付面。
 - [-] runtime 独立 `preferences_artifact` 保留后续评估，不进入首版范围。
 - [-] 偏好分类、自动归纳、自动提炼保留后续评估，不进入首版范围。
+- [-] 基于 Batch 2/3 证据回写 `A1` business clarifier 与 `A4` abstraction caution 的 wording/examples；当前不阻塞已通过的 promotion decision。

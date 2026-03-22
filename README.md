@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--22.183053-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--22.225057-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
@@ -610,6 +610,24 @@ python3 -m unittest tests.test_runtime -v
 - [专项蓝图收口文档](./.sopify-skills/blueprint/skill-standards-refactor.md)
 - [Skill Eval Baseline](./evals/skill_eval_baseline.json)
 - [Skill Eval SLO](./evals/skill_eval_slo.json)
+
+### 第一性原理分层试点（2026-03）
+
+当前仓库已在活动 plan 中补齐首轮 promotion gate pilot 的最小评估工件：
+
+- [样本矩阵](./.sopify-skills/plan/20260321_go-plan/pilot_sample_matrix.md)
+- [Trigger Matrix](./.sopify-skills/plan/20260321_go-plan/trigger_matrix.md)
+- [人工评审 Rubric](./.sopify-skills/plan/20260321_go-plan/pilot_review_rubric.md)
+
+分层矩阵：
+
+- `preferences.md`：当前 workspace 的协作风格试运行，包括第一性原理纠偏和“两段式协作”偏好。
+- `analyze`：仅吸收 4 条稳定子规则，分别是目标/路径分离、目标模糊先澄清、次优路径给替代、SMART 风格成功标准收口。
+- `consult/runtime`：仍属于二期输出层；“所有问答都两段式输出”尚未进入默认 runtime / consult 契约。
+
+当前 `v1 implementation complete` 的完成口径固定为：workspace pilot + `analyze` 子集 + 文档/测试收口。`Batch 2/3` 继续保留为后续优化校准，不作为本轮完成阻塞项。
+
+promotion gate 的 `80% / 10% / 20% / <=1` 目前只冻结为 `round-1 pilot target`。只有跑完整个 `45` 样本、覆盖 `3` 类环境后，才考虑是否提升为最终 promotion threshold。
 
 ---
 

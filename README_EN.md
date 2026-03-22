@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--03--22.183053-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--22.225057-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration)
@@ -589,6 +589,24 @@ See full specs:
 - [Closure Blueprint](./.sopify-skills/blueprint/skill-standards-refactor.md)
 - [Skill Eval Baseline](./evals/skill_eval_baseline.json)
 - [Skill Eval SLO](./evals/skill_eval_slo.json)
+
+### First-Principles Pilot Artifacts (2026-03)
+
+The active plan now carries the minimum evaluation artifacts for the first promotion-gate pilot:
+
+- [Sample Matrix](./.sopify-skills/plan/20260321_go-plan/pilot_sample_matrix.md)
+- [Trigger Matrix](./.sopify-skills/plan/20260321_go-plan/trigger_matrix.md)
+- [Human Review Rubric](./.sopify-skills/plan/20260321_go-plan/pilot_review_rubric.md)
+
+Layering matrix:
+
+- `preferences.md`: workspace-local collaboration-style pilot, including first-principles correction and the local "two-phase collaboration" preference.
+- `analyze`: only the 4 stable subset rules move down here: goal/path separation, clarify fuzzy goals first, suggest a lower-cost alternative when the path is suboptimal, and close success criteria in SMART form.
+- `consult/runtime`: still phase-2 output-layer scope; "two-phase output for all Q&A" has not moved into the default runtime / consult contract.
+
+The completion scope for `v1 implementation complete` is now fixed as: workspace pilot + `analyze` subset + docs/tests closure. `Batch 2/3` remain post-v1 optimization and do not block this round.
+
+The promotion-gate thresholds `80% / 10% / 20% / <=1` are frozen only as the current `round-1 pilot target`. They should be reconsidered as a final promotion threshold only after the full `45`-sample run across `3` environment classes is complete.
 
 ---
 

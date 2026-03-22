@@ -59,6 +59,8 @@ _CONTINUE_KEYWORDS = {"继续", "下一步", "继续执行", "继续吧", "go on
 _CANCEL_KEYWORDS = {"取消", "停止", "终止", "abort", "cancel", "stop"}
 _ARCHITECTURE_KEYWORDS = ("架构", "系统", "runtime", "workflow", "engine", "adapter", "plugin", "新功能", "重构", "refactor")
 _ACTION_KEYWORDS = (
+    "补",
+    "修",
     "修复",
     "实现",
     "添加",
@@ -79,6 +81,10 @@ _QUESTION_PREFIXES = (
     "为什么",
     "如何",
     "怎么",
+    "解释",
+    "说明",
+    "看下",
+    "看看",
     "what",
     "why",
     "how",
@@ -128,6 +134,44 @@ _PLAN_META_REVIEW_ANCHORS = (
 _PLAN_META_REVIEW_EDIT_PATTERNS = (
     re.compile(r"(整理|更新|同步|写入|落地|修改|实现|修复|补充|重写|合并|merge|edit|change|update)", re.IGNORECASE),
 )
+_ANALYZE_CHALLENGE_A1_PATTERNS = (
+    re.compile(r"(优化|统一).*(体验|职责)", re.IGNORECASE),
+    re.compile(r"(更顺一点|更顺滑|避免用户看不懂|让用户更容易理解)", re.IGNORECASE),
+)
+_ANALYZE_CHALLENGE_A2_PATTERNS = (
+    re.compile(r"(直接|只要|就|省掉|去掉|绕过|不用).*(就行|即可|可以了|好了)", re.IGNORECASE),
+    re.compile(r"(去掉|省掉|绕过).*(gate|runtime gate|execution confirm|执行确认)", re.IGNORECASE),
+)
+_ANALYZE_CHALLENGE_A3_PATTERNS = (
+    re.compile(r"(更轻|更小|最小改法|最小方案|值不值得|有没有更轻的改法|有没有更小的改法)", re.IGNORECASE),
+    re.compile(r"(重复建设|更低成本|更便宜|先不做大改)", re.IGNORECASE),
+)
+_ANALYZE_CHALLENGE_A4_PATTERNS = (
+    re.compile(r"(统一入口|唯一机器事实源|唯一事实源|收敛成一个|收敛为一个)", re.IGNORECASE),
+    re.compile(r"(runtime gate|execution gate|topic_key|current_handoff|current_run|manifest|handoff|consult 路由|consult route)", re.IGNORECASE),
+    re.compile(r"(自动复用|长期契约|host contract|宿主契约|正文回答)", re.IGNORECASE),
+)
+_ANALYZE_CHALLENGE_A4_DECISION_PATTERNS = (
+    re.compile(r"(要不要|是否|应不应该|有没有必要|是不是|而不是|直接|收敛|统一|唯一|参与)", re.IGNORECASE),
+    re.compile(r"(怎么处理|如何处理|怎么收口|如何收口)", re.IGNORECASE),
+)
+_ANALYZE_CHALLENGE_TRIGGER_PATTERNS = (
+    ("A2", _ANALYZE_CHALLENGE_A2_PATTERNS),
+    ("A3", _ANALYZE_CHALLENGE_A3_PATTERNS),
+    ("A4", _ANALYZE_CHALLENGE_A4_PATTERNS),
+    ("A1", _ANALYZE_CHALLENGE_A1_PATTERNS),
+)
+_EXECUTION_CONFIRM_PLAN_FEEDBACK_PATTERNS = (
+    re.compile(r"(这个|当前|该)\s*(plan|方案)", re.IGNORECASE),
+    re.compile(r"(风险|任务|范围|scope|task|plan|方案).*(展开|补充|调整|更新|修改|review|评审|重写|再收口)", re.IGNORECASE),
+    re.compile(r"(写进|写入|挂到|并入|回到).*(plan|方案)", re.IGNORECASE),
+)
+_EXECUTION_CONFIRM_REVISION_PATTERNS = (
+    re.compile(r"(先把|先将|先).*(风险|任务|范围|scope|task|plan|方案)", re.IGNORECASE),
+    re.compile(r"(展开一点|补充一下|再展开|再补充|再收口|再评审)", re.IGNORECASE),
+    re.compile(r"(风险|任务|范围|scope|task|plan|方案).*(更具体|更清楚|再具体一点|再细一点)", re.IGNORECASE),
+)
+_LIGHT_EDIT_HINTS = ("readme", "注释", "comment", "typo", "文案", "assert", "断言", "路径说明")
 
 
 @dataclass(frozen=True)
@@ -236,6 +280,7 @@ class Router:
             pending_execution_confirm = _classify_pending_execution_confirm(
                 text,
                 active_run_stage=active_run.stage,
+                current_plan=current_plan,
                 command_decision=command_decision,
                 skills=skills,
             )
@@ -277,6 +322,14 @@ class Router:
         )
         if meta_review_route is not None:
             return self._with_capture(meta_review_route)
+
+        analyze_challenge_route = _classify_analyze_challenge(
+            text,
+            current_plan=current_plan,
+            skills=skills,
+        )
+        if analyze_challenge_route is not None:
+            return self._with_capture(analyze_challenge_route)
 
         runtime_first_guard = match_runtime_first_guard(text)
         if runtime_first_guard is not None:
@@ -608,6 +661,7 @@ def _classify_pending_execution_confirm(
     text: str,
     *,
     active_run_stage: str,
+    current_plan,
     command_decision: RouteDecision | None,
     skills: Iterable[SkillMeta],
 ) -> RouteDecision | None:
@@ -627,6 +681,9 @@ def _classify_pending_execution_confirm(
                 candidate_skill_ids=_candidate_skills("execution_confirm_pending", skills, "develop"),
                 active_run_action="inspect_execution_confirm",
             )
+
+    if not _looks_like_execution_confirm_feedback(text, current_plan=current_plan):
+        return None
 
     response = parse_execution_confirm_response(text)
     if response.action == "cancel":
@@ -668,6 +725,8 @@ def _estimate_complexity(text: str) -> _ComplexitySignal:
     has_arch = any(keyword.lower() in lowered for keyword in _ARCHITECTURE_KEYWORDS)
     has_action = any(keyword.lower() in lowered for keyword in _ACTION_KEYWORDS)
 
+    if has_action and any(token in lowered for token in _LIGHT_EDIT_HINTS):
+        return _ComplexitySignal("simple", "Detected a bounded docs/tests wording tweak", None)
     if has_arch or file_refs > 5:
         plan_level = "full" if has_arch and any(token in lowered for token in ("架构", "system", "plugin", "adapter")) else "standard"
         return _ComplexitySignal("complex", "Detected architecture-scale or broad change intent", plan_level)
@@ -695,6 +754,29 @@ def _classify_plan_meta_review(
         complexity="simple",
         should_recover_context=current_plan is not None,
         candidate_skill_ids=_candidate_skills("consult", skills, "analyze"),
+    )
+
+
+def _classify_analyze_challenge(
+    text: str,
+    *,
+    current_plan,
+    skills: Iterable[SkillMeta],
+) -> RouteDecision | None:
+    trigger_label = _match_analyze_challenge_label(text)
+    if trigger_label is None:
+        return None
+    return RouteDecision(
+        route_name="consult",
+        request_text=text,
+        reason=f"Matched first-principles analyze challenge signal {trigger_label}",
+        complexity="simple",
+        should_recover_context=current_plan is not None,
+        candidate_skill_ids=_candidate_skills("consult", skills, "analyze"),
+        artifacts={
+            "consult_mode": "analyze_challenge",
+            "trigger_label": trigger_label,
+        },
     )
 
 
@@ -740,6 +822,47 @@ def _looks_like_plan_meta_review(text: str, *, current_plan) -> bool:
     if _is_protected_plan_asset_request(text):
         return True
     return any(pattern.search(text) is not None for pattern in _PLAN_META_REVIEW_ANCHORS)
+
+
+def _match_analyze_challenge_label(text: str) -> str | None:
+    normalized = text.strip()
+    if not normalized:
+        return None
+    for label, patterns in _ANALYZE_CHALLENGE_TRIGGER_PATTERNS:
+        if not any(pattern.search(normalized) is not None for pattern in patterns):
+            continue
+        if label == "A4" and not any(pattern.search(normalized) is not None for pattern in _ANALYZE_CHALLENGE_A4_DECISION_PATTERNS):
+            continue
+        return label
+    return None
+
+
+def _looks_like_execution_confirm_feedback(text: str, *, current_plan) -> bool:
+    normalized = text.strip()
+    if not normalized:
+        return False
+
+    response = parse_execution_confirm_response(normalized)
+    if response.action in {"confirm", "status", "cancel"}:
+        return True
+
+    if _is_consultation(normalized):
+        return False
+
+    if any(pattern.search(normalized) is not None for pattern in _EXECUTION_CONFIRM_PLAN_FEEDBACK_PATTERNS):
+        return True
+    if any(pattern.search(normalized) is not None for pattern in _EXECUTION_CONFIRM_REVISION_PATTERNS):
+        return True
+
+    if current_plan is None:
+        return False
+
+    lowered = normalized.casefold()
+    for anchor in (getattr(current_plan, "plan_id", ""), getattr(current_plan, "path", ""), getattr(current_plan, "title", "")):
+        candidate = str(anchor or "").strip().casefold()
+        if candidate and candidate in lowered:
+            return True
+    return False
 
 
 def _contains_intent(text: str, keywords: Iterable[str]) -> bool:

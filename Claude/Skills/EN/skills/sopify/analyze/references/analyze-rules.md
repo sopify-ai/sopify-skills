@@ -72,7 +72,9 @@ Follow-up rules:
 ### Step 5: Extract key objectives
 
 - Compress the request into one core objective sentence.
-- Define verifiable success criteria.
+- Distinguish whether the user provided a real goal or only an implementation path.
+- When the input is mostly a path, treat that path as a candidate approach rather than the success criterion itself.
+- Define verifiable success criteria, and close them in a SMART-style form: deliverable, boundary, constraints, verification, and next stop-point.
 
 ### Step 6: Code analysis and technical preparation
 
@@ -80,6 +82,13 @@ Follow-up rules:
 - Locate related modules and key files.
 - Run baseline quality checks (stale information, security risks).
 - Pull external documentation only when necessary.
+
+Stable subset rules:
+
+1. When the goal is still fuzzy, clarify key facts first; only continue with explicit assumptions when `auto_decide=true`.
+2. When the current path is clearly suboptimal, include at least one lower-cost or lower-risk alternative in the analysis summary.
+3. Every alternative path should state the tradeoff instead of giving a bare conclusion.
+4. Do not force deep challenge mode for `quick_fix`, pure state explanation, or lightweight consult flows.
 
 ## Adaptive routing
 

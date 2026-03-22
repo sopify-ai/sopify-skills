@@ -24,6 +24,9 @@ from .models import (
 
 CURRENT_DECISION_FILENAME = "current_decision.json"
 CURRENT_DECISION_RELATIVE_PATH = f".sopify-skills/state/{CURRENT_DECISION_FILENAME}"
+ACTIVE_PLAN_BINDING_DECISION_TYPE = "active_plan_binding_choice"
+ACTIVE_PLAN_ATTACH_OPTION_ID = "attach_current_plan"
+ACTIVE_PLAN_NEW_OPTION_ID = "create_new_plan"
 
 _DECIDE_COMMAND_RE = re.compile(r"^~decide(?:\s+(?P<verb>status|cancel|choose))?(?:\s+(?P<body>.+))?$", re.IGNORECASE)
 _STATUS_ALIASES = {"status", "查看决策", "查看当前决策", "decision status"}
@@ -165,6 +168,62 @@ def build_execution_gate_decision_state(
         candidate_skill_ids=route.candidate_skill_ids,
         policy_id="execution_gate_blocking_risk",
         trigger_reason=gate.blocking_reason,
+        created_at=created_at,
+        updated_at=created_at,
+    )
+
+
+def build_active_plan_binding_decision_state(
+    route: RouteDecision,
+    *,
+    current_plan: PlanArtifact,
+    config: RuntimeConfig,
+) -> DecisionState:
+    """Ask whether a new non-anchored request should attach to the active plan or branch into a new one."""
+    created_at = iso_now()
+    question, summary, options = _active_plan_binding_payload(
+        current_plan=current_plan,
+        request_text=route.request_text,
+        language=config.language,
+    )
+    rendered = build_strategy_pick_template(
+        checkpoint_id=_active_plan_binding_decision_id(current_plan.plan_id, route.request_text),
+        question=question,
+        summary=summary,
+        options=options,
+        language=config.language,
+        recommended_option_id=None,
+        default_option_id=None,
+    )
+    return DecisionState(
+        schema_version="2",
+        decision_id=_active_plan_binding_decision_id(current_plan.plan_id, route.request_text),
+        feature_key=current_plan.plan_id,
+        phase="design",
+        status="pending",
+        decision_type=ACTIVE_PLAN_BINDING_DECISION_TYPE,
+        question=question,
+        summary=summary,
+        options=rendered.options,
+        checkpoint=rendered.checkpoint,
+        recommended_option_id=rendered.recommended_option_id,
+        default_option_id=rendered.default_option_id,
+        context_files=resolve_context_profile(
+            config=config,
+            profile="decision",
+            current_plan=current_plan,
+        ).files,
+        resume_route=route.route_name,
+        request_text=route.request_text,
+        requested_plan_level=route.plan_level or current_plan.level,
+        capture_mode=route.capture_mode,
+        candidate_skill_ids=route.candidate_skill_ids,
+        policy_id="active_plan_routing_choice",
+        trigger_reason="non_anchored_complex_request_with_active_plan",
+        resume_context={
+            "active_plan_id": current_plan.plan_id,
+            "active_plan_path": current_plan.path,
+        },
         created_at=created_at,
         updated_at=created_at,
     )
@@ -327,6 +386,11 @@ def _execution_gate_decision_id(plan_id: str, blocking_reason: str) -> str:
     return f"decision_gate_{digest}"
 
 
+def _active_plan_binding_decision_id(plan_id: str, request_text: str) -> str:
+    digest = sha1(f"{plan_id}:{request_text}".encode("utf-8")).hexdigest()[:8]
+    return f"decision_plan_bind_{digest}"
+
+
 def _feature_key(request_text: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "-", request_text.casefold()).strip("-")
     if not normalized:
@@ -428,6 +492,59 @@ def _gate_option(option_id: str, title: str, summary: str, *, recommended: bool)
         tradeoffs=(summary,),
         impacts=("Will immediately feed back into the execution gate.",),
         recommended=recommended,
+    )
+
+
+def _active_plan_binding_payload(
+    *,
+    current_plan: PlanArtifact,
+    request_text: str,
+    language: str,
+) -> tuple[str, str, tuple[DecisionOption, ...]]:
+    if language == "en-US":
+        return (
+            f"An active plan already exists at `{current_plan.path}`. Should this new request attach to that plan or start a new plan?",
+            "A non-anchored complex request arrived while another plan is still active. Confirm the planning container before runtime continues.",
+            (
+                DecisionOption(
+                    option_id=ACTIVE_PLAN_ATTACH_OPTION_ID,
+                    title="Attach to current plan",
+                    summary="Keep a single plan thread and review the current plan before execution continues.",
+                    tradeoffs=("The current plan must be revised before execution may continue.",),
+                    impacts=("Runtime will reopen the active plan for review.",),
+                    recommended=False,
+                ),
+                DecisionOption(
+                    option_id=ACTIVE_PLAN_NEW_OPTION_ID,
+                    title="Create a new plan",
+                    summary="Open a separate plan scaffold for the new request and keep the current plan untouched.",
+                    tradeoffs=("Adds another plan package that will need its own review and execution decision.",),
+                    impacts=("Runtime will create a new plan scaffold for this request.",),
+                    recommended=False,
+                ),
+            ),
+        )
+    return (
+        f"当前已有活动 plan `{current_plan.path}`。这次新请求要挂到当前 plan，还是新开一个 plan？",
+        "检测到一个未明确锚定到当前 plan 的复杂新请求。为避免静默复用活动 plan，需要先确认这轮要挂载到哪里。",
+        (
+            DecisionOption(
+                option_id=ACTIVE_PLAN_ATTACH_OPTION_ID,
+                title="挂到当前 plan",
+                summary="保持单条 plan 主线，但需要先回到当前 plan 做评审/更新，再继续执行。",
+                tradeoffs=("当前 plan 需要重新收口，不能直接沿用现有 execution-confirm 状态。",),
+                impacts=("runtime 会把当前 plan 退回评审态。",),
+                recommended=False,
+            ),
+            DecisionOption(
+                option_id=ACTIVE_PLAN_NEW_OPTION_ID,
+                title="新开一个 plan",
+                summary="为这次新请求单独建立 plan scaffold，当前 plan 保持不动。",
+                tradeoffs=("会新增一个需要单独评审和执行确认的 plan 包。",),
+                impacts=("runtime 会为当前请求生成新的正式 plan。",),
+                recommended=False,
+            ),
+        ),
     )
 
 

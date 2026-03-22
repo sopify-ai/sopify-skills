@@ -6,6 +6,28 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-22.225057] - 2026-03-22
+
+### Changed
+
+- Updated release-relevant files:
+  - `.sopify-skills/blueprint/README.md`
+  - `.sopify-skills/blueprint/design.md`
+  - `.sopify-skills/blueprint/tasks.md`
+  - `.sopify-skills/user/preferences.md`
+  - `README.md`
+  - `README_EN.md`
+  - `runtime/decision.py`
+  - `runtime/engine.py`
+  - `runtime/handoff.py`
+  - `runtime/router.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_runtime.py`
+  - `tests/test_runtime_gate.py`
+
 ## [2026-03-22.183053] - 2026-03-22
 
 ### Changed

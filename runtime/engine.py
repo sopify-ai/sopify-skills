@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha1
 from pathlib import Path
+import re
 from typing import Any, Mapping, Optional
 
 from .checkpoint_materializer import materialize_checkpoint_request
@@ -14,6 +15,10 @@ from .config import load_runtime_config
 from .context_recovery import recover_context
 from .daily_summary import build_daily_summary
 from .decision import (
+    ACTIVE_PLAN_ATTACH_OPTION_ID,
+    ACTIVE_PLAN_BINDING_DECISION_TYPE,
+    ACTIVE_PLAN_NEW_OPTION_ID,
+    build_active_plan_binding_decision_state,
     build_decision_state,
     build_execution_gate_decision_state,
     confirm_decision,
@@ -48,6 +53,12 @@ from .state import (
     local_timezone_name,
     stable_request_sha1,
     summarize_request_text,
+)
+
+_CURRENT_PLAN_ANCHOR_PATTERNS = (
+    re.compile(r"(当前|这个|该)\s*(plan|方案)", re.IGNORECASE),
+    re.compile(r"(current|active)\s+plan", re.IGNORECASE),
+    re.compile(r"(继续|回到|基于|沿用|挂到|并入|写进|写入).*(plan|方案)", re.IGNORECASE),
 )
 
 
@@ -359,6 +370,11 @@ def run_runtime(
     else:
         current_run = state_store.get_current_run() or recovered.current_run
         current_plan = plan_artifact or state_store.get_current_plan() or recovered.current_plan
+        if effective_route.route_name == "finalize_active" and plan_artifact is not None:
+            # Finalize clears active-flow state; only persist a completion handoff
+            # when the archive transaction actually succeeded.
+            current_run = None
+            current_plan = plan_artifact
         handoff = build_runtime_handoff(
             config=config,
             decision=effective_route,
@@ -604,6 +620,7 @@ def _handle_clarification_resume(
         should_recover_context=False,
         should_create_plan=True,
         capture_mode=current_clarification.capture_mode,
+        artifacts={"planning_resume_source": "clarification"},
     )
     state_store.clear_current_clarification()
     planning_route, plan_artifact, planning_notes, kb_artifact = _advance_planning_route(
@@ -701,33 +718,29 @@ def _handle_decision_resume(
             kb_artifact=kb_artifact,
         )
 
-    confirmed_decision = current_decision
-    resumed_route = RouteDecision(
-        route_name=current_decision.resume_route or "plan_only",
-        request_text=current_decision.request_text,
-        reason="Decision confirmed and planning resumed",
-        command=None,
-        complexity="complex",
-        plan_level=current_decision.requested_plan_level,
-        candidate_skill_ids=current_decision.candidate_skill_ids,
-        should_recover_context=False,
-        should_create_plan=True,
-        capture_mode=current_decision.capture_mode,
-    )
-    current_plan = state_store.get_current_plan()
-    if current_plan is not None:
-        gated_route, reused_plan, gated_notes = _apply_execution_gate_to_plan(
-            resumed_route,
-            plan_artifact=current_plan,
+    if current_decision.decision_type == ACTIVE_PLAN_BINDING_DECISION_TYPE:
+        return _resume_from_active_plan_binding_decision(
             state_store=state_store,
+            current_decision=current_decision,
+            notes=notes,
+            kb_artifact=kb_artifact,
             config=config,
-            decision_context=current_decision,
         )
-        notes.extend(gated_notes)
-        return (gated_route, reused_plan, notes, kb_artifact, confirmed_decision)
 
+    confirmed_decision = current_decision
     planning_route, plan_artifact, planning_notes, kb_artifact = _advance_planning_route(
-        resumed_route,
+        RouteDecision(
+            route_name=current_decision.resume_route or "plan_only",
+            request_text=current_decision.request_text,
+            reason="Decision confirmed and planning resumed",
+            command=None,
+            complexity="complex",
+            plan_level=current_decision.requested_plan_level,
+            candidate_skill_ids=current_decision.candidate_skill_ids,
+            should_recover_context=False,
+            should_create_plan=True,
+            capture_mode=current_decision.capture_mode,
+        ),
         state_store=state_store,
         config=config,
         kb_artifact=kb_artifact,
@@ -860,6 +873,43 @@ def _resume_from_develop_decision(
         kb_artifact,
         current_decision,
     )
+
+
+def _resume_from_active_plan_binding_decision(
+    *,
+    state_store: StateStore,
+    current_decision: DecisionState,
+    notes: list[str],
+    kb_artifact: KbArtifact | None,
+    config: RuntimeConfig,
+) -> tuple[RouteDecision, PlanArtifact | None, list[str], KbArtifact | None, DecisionState | None]:
+    selected_option_id = current_decision.selected_option_id or ""
+    resume_route = current_decision.resume_route or "plan_only"
+    _consume_current_decision(state_store, current_decision)
+    notes.append(f"Active-plan routing decision confirmed: {selected_option_id or '<unknown>'}")
+
+    resumed_route = RouteDecision(
+        route_name=resume_route,
+        request_text=current_decision.request_text,
+        reason="Active-plan routing decision confirmed and planning resumed",
+        complexity="complex",
+        plan_level=current_decision.requested_plan_level,
+        candidate_skill_ids=current_decision.candidate_skill_ids or ("design", "develop"),
+        should_recover_context=False,
+        should_create_plan=True,
+        capture_mode=current_decision.capture_mode,
+        artifacts={
+            "active_plan_binding_selection": selected_option_id,
+        },
+    )
+    planning_route, plan_artifact, planning_notes, kb_artifact = _advance_planning_route(
+        resumed_route,
+        state_store=state_store,
+        config=config,
+        kb_artifact=kb_artifact,
+    )
+    notes.extend(planning_notes)
+    return (planning_route, plan_artifact, notes, kb_artifact, current_decision)
 
 
 def _handle_execution_confirm(
@@ -1202,6 +1252,46 @@ def _advance_planning_route(
         )
 
     if confirmed_decision is None:
+        current_plan = state_store.get_current_plan()
+        if current_plan is not None and _should_create_active_plan_binding_decision(
+            decision,
+            current_plan=current_plan,
+            config=config,
+        ):
+            pending_decision = build_active_plan_binding_decision_state(
+                decision,
+                current_plan=current_plan,
+                config=config,
+            )
+            state_store.set_current_decision(pending_decision)
+            current_run = state_store.get_current_run()
+            state_store.set_current_run(
+                RunState(
+                    run_id=current_run.run_id if current_run is not None else _make_run_id(decision.request_text),
+                    status="active",
+                    stage="decision_pending",
+                    route_name=decision.route_name,
+                    title=pending_decision.question,
+                    created_at=current_run.created_at if current_run is not None else iso_now(),
+                    updated_at=iso_now(),
+                    plan_id=current_plan.plan_id,
+                    plan_path=current_plan.path,
+                    execution_gate=current_run.execution_gate if current_run is not None else None,
+                    request_excerpt=summarize_request_text(decision.request_text),
+                    request_sha1=stable_request_sha1(decision.request_text),
+                )
+            )
+            notes.append(f"Decision checkpoint created: {pending_decision.decision_id}")
+            return (
+                _decision_pending_route(
+                    decision,
+                    reason="A non-anchored complex request arrived while another plan is active",
+                ),
+                None,
+                notes,
+                kb_artifact,
+            )
+
         pending_decision = _build_route_native_decision_state(decision, config=config)
         if pending_decision is not None:
             state_store.set_current_decision(pending_decision)
@@ -1263,7 +1353,25 @@ def _select_plan_for_request(
     level: str,
     confirmed_decision: DecisionState | None,
 ) -> tuple[PlanArtifact, list[str]]:
+    current_plan = state_store.get_current_plan()
+    active_plan_binding_selection = str(decision.artifacts.get("active_plan_binding_selection") or "").strip()
+
     if confirmed_decision is not None:
+        if confirmed_decision.decision_type == ACTIVE_PLAN_BINDING_DECISION_TYPE:
+            selected_option_id = confirmed_decision.selected_option_id or ""
+            if selected_option_id == ACTIVE_PLAN_ATTACH_OPTION_ID and current_plan is not None:
+                return current_plan, [f"Attached the request back to active plan {current_plan.path} after decision confirmation"]
+            if selected_option_id == ACTIVE_PLAN_NEW_OPTION_ID or current_plan is None:
+                created = create_plan_scaffold(
+                    decision.request_text,
+                    config=config,
+                    level=level,
+                    decision_state=confirmed_decision,
+                )
+                return created, [f"Plan scaffold created at {created.path} after active-plan routing confirmation"]
+
+        if current_plan is not None:
+            return current_plan, [f"Reused active plan {current_plan.path} after decision confirmation"]
         created = create_plan_scaffold(
             decision.request_text,
             config=config,
@@ -1272,9 +1380,17 @@ def _select_plan_for_request(
         )
         return created, [f"Plan scaffold created at {created.path}"]
 
-    current_plan = state_store.get_current_plan()
     explicit_new_plan = request_explicitly_wants_new_plan(decision.request_text)
     explicit_plan = find_plan_by_request_reference(decision.request_text, config=config)
+
+    if active_plan_binding_selection == ACTIVE_PLAN_NEW_OPTION_ID:
+        created = create_plan_scaffold(
+            decision.request_text,
+            config=config,
+            level=level,
+            decision_state=None,
+        )
+        return created, [f"Plan scaffold created at {created.path} (selected new-plan routing)"]
 
     if explicit_new_plan:
         created = create_plan_scaffold(
@@ -1291,6 +1407,10 @@ def _select_plan_for_request(
         return explicit_plan, [f"Rebound planning context to existing plan {explicit_plan.path} (explicit plan reference)"]
 
     if current_plan is not None:
+        if active_plan_binding_selection == ACTIVE_PLAN_ATTACH_OPTION_ID:
+            return current_plan, [f"Reused active plan {current_plan.path} (selected current-plan routing)"]
+        if _request_anchors_current_plan(decision.request_text, current_plan=current_plan):
+            return current_plan, [f"Reused active plan {current_plan.path} (implicit current-plan anchor)"]
         return current_plan, [f"Reused active plan {current_plan.path} under strict single-active-plan policy"]
 
     created = create_plan_scaffold(
@@ -1300,6 +1420,46 @@ def _select_plan_for_request(
         decision_state=None,
     )
     return created, [f"Plan scaffold created at {created.path}"]
+
+
+def _should_create_active_plan_binding_decision(
+    decision: RouteDecision,
+    *,
+    current_plan: PlanArtifact,
+    config: RuntimeConfig,
+) -> bool:
+    if decision.route_name not in {"plan_only", "workflow", "light_iterate"}:
+        return False
+    if decision.complexity != "complex":
+        return False
+    if str(decision.artifacts.get("active_plan_binding_selection") or "").strip():
+        return False
+    if str(decision.artifacts.get("planning_resume_source") or "").strip():
+        return False
+    if request_explicitly_wants_new_plan(decision.request_text):
+        return False
+    if find_plan_by_request_reference(decision.request_text, config=config) is not None:
+        return False
+    return not _request_anchors_current_plan(decision.request_text, current_plan=current_plan)
+
+
+def _request_anchors_current_plan(request_text: str, *, current_plan: PlanArtifact) -> bool:
+    text = request_text.strip()
+    if not text:
+        return False
+
+    lowered = text.casefold()
+    for anchor in (current_plan.plan_id, current_plan.path, current_plan.title):
+        candidate = str(anchor or "").strip().casefold()
+        if candidate and candidate in lowered:
+            return True
+
+    compact = lowered.replace(" ", "")
+    if any(token in compact for token in ("当前plan", "这个plan", "该plan", "activeplan", "currentplan")):
+        return True
+    if any(token in compact for token in ("当前方案", "这个方案", "该方案")):
+        return True
+    return any(pattern.search(text) is not None for pattern in _CURRENT_PLAN_ANCHOR_PATTERNS)
 
 
 def _preserve_or_clear_current_plan_for_pending_planning_checkpoint(
@@ -1330,6 +1490,52 @@ def _apply_execution_gate_to_plan(
     config: RuntimeConfig,
     decision_context: DecisionState | None,
 ) -> tuple[RouteDecision, PlanArtifact, list[str]]:
+    if str(decision.artifacts.get("active_plan_binding_selection") or "").strip() == ACTIVE_PLAN_ATTACH_OPTION_ID:
+        gate = ExecutionGate(
+            gate_status="blocked",
+            blocking_reason="missing_info",
+            plan_completion="incomplete",
+            next_required_action="review_or_execute_plan",
+            notes=("Attached the new request to the current plan; review and update that plan before execution continues.",),
+        )
+        state_store.set_current_run(
+            _make_run_state(
+                RouteDecision(
+                    route_name="plan_only",
+                    request_text=decision.request_text,
+                    reason="Attached request to the current plan and returned it to plan review",
+                    command=decision.command,
+                    complexity=decision.complexity,
+                    plan_level=decision.plan_level or plan_artifact.level,
+                    candidate_skill_ids=decision.candidate_skill_ids,
+                    should_recover_context=False,
+                    should_create_plan=False,
+                    capture_mode=decision.capture_mode,
+                    artifacts=decision.artifacts,
+                ),
+                plan_artifact,
+                stage="plan_generated",
+                execution_gate=gate,
+            )
+        )
+        return (
+            RouteDecision(
+                route_name="plan_only",
+                request_text=decision.request_text,
+                reason="Attached request to the current plan and returned it to plan review",
+                command=decision.command,
+                complexity=decision.complexity,
+                plan_level=decision.plan_level or plan_artifact.level,
+                candidate_skill_ids=decision.candidate_skill_ids,
+                should_recover_context=False,
+                should_create_plan=False,
+                capture_mode=decision.capture_mode,
+                artifacts=decision.artifacts,
+            ),
+            plan_artifact,
+            list(gate.notes),
+        )
+
     gate = evaluate_execution_gate(
         decision=decision,
         plan_artifact=plan_artifact,
