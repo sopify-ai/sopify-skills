@@ -6,6 +6,19 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-22.183053] - 2026-03-22
+
+### Changed
+
+- Updated release-relevant files:
+  - `runtime/engine.py`
+  - `runtime/plan_scaffold.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_runtime.py`
+
 ## [2026-03-21.224637] - 2026-03-21
 
 ### Changed

@@ -19,11 +19,11 @@ _PLAN_REFERENCE_RE = re.compile(r"(?P<plan_id>\d{8}_[a-z0-9][a-z0-9_.-]*)", re.I
 _EXPLICIT_NEW_PLAN_PATTERNS = (
     re.compile(r"\bnew\s+plan\b", re.IGNORECASE),
     re.compile(r"\bcreate\s+(?:a\s+)?new\s+plan\b", re.IGNORECASE),
+    re.compile(r"新建(?:一个)?\s*plan", re.IGNORECASE),
     re.compile(r"新\s*plan", re.IGNORECASE),
     re.compile(r"新的\s*plan", re.IGNORECASE),
     re.compile(r"另起(?:一个)?\s*plan", re.IGNORECASE),
     re.compile(r"新增(?:一个)?\s*plan", re.IGNORECASE),
-    re.compile(r"其他\s*plan", re.IGNORECASE),
 )
 
 

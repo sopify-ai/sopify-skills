@@ -1169,7 +1169,11 @@ def _advance_planning_route(
     pending_clarification = _build_route_native_clarification_state(decision, config=config)
     if pending_clarification is not None:
         state_store.set_current_clarification(pending_clarification)
-        state_store.clear_current_plan()
+        _preserve_or_clear_current_plan_for_pending_planning_checkpoint(
+            decision,
+            state_store=state_store,
+            config=config,
+        )
         clarification_gate = evaluate_execution_gate(
             decision=decision,
             plan_artifact=None,
@@ -1201,7 +1205,7 @@ def _advance_planning_route(
         pending_decision = _build_route_native_decision_state(decision, config=config)
         if pending_decision is not None:
             state_store.set_current_decision(pending_decision)
-            _preserve_or_clear_current_plan_for_pending_decision(
+            _preserve_or_clear_current_plan_for_pending_planning_checkpoint(
                 decision,
                 state_store=state_store,
                 config=config,
@@ -1298,7 +1302,7 @@ def _select_plan_for_request(
     return created, [f"Plan scaffold created at {created.path}"]
 
 
-def _preserve_or_clear_current_plan_for_pending_decision(
+def _preserve_or_clear_current_plan_for_pending_planning_checkpoint(
     decision: RouteDecision,
     *,
     state_store: StateStore,
