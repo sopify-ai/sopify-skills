@@ -28,6 +28,14 @@
 | `L3 archive` | `history/index.md`, `history/YYYY-MM/...` | 显式 finalize 后的归档与查找入口 |
 | `runtime` | `state/*.json`, `replay/` | 运行态 machine truth 与可选学习记录 |
 
+## Runtime state scope
+
+- review state 默认落在 `state/sessions/<session_id>/`，覆盖 `current_plan/current_run/current_handoff/current_clarification/current_decision/last_route`
+- 根级 `state/` 继续只承载 global execution truth，主要服务 `execution_confirm_pending / resume_active / exec_plan / finalize_active`
+- `session_id` 可以由宿主显式透传，也可以由 runtime gate 自动生成并回传；同一条 review 续轮必须复用同一个 `session_id`
+- 并发 review 使用不同 `session_id`；global execution truth 只补 soft ownership 观测字段，不引入 lease / heartbeat / takeover 锁
+- clarification / decision bridge 先读 session review state，再回退到 global execution truth，保证 develop 阶段生成的 checkpoint 仍可桥接
+
 ## 生命周期
 
 1. 首次真实项目触发：只要求 `project.md`、`user/preferences.md` 与 `blueprint/README.md`。

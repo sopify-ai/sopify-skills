@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--23.122831-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--23.143454-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
@@ -110,9 +110,12 @@ bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
 - 只有当 gate 返回 `status=ready`、`gate_passed=true`、`evidence.handoff_found=true`、`evidence.strict_runtime_entry=true` 时，宿主才可声称“已进入 runtime”并继续普通阶段
 - `evidence.handoff_found` 的含义固定为：`current_handoff.json` 已成功落盘；runtime 内存中的 handoff 只可作为 normalize fallback，不可单独作为通过证据
 - `.sopify-skills/state/current_gate_receipt.json` 只用于 smoke / debug / doctor 可见性，不是宿主主链路 machine truth；主 machine truth 仍是 `current_handoff.json`
+- `runtime_gate.py enter` 会在返回 contract 中带上 `session_id`；宿主在同一条 review / planning / bridge 续轮中必须回传同一个 `session_id`
+- 并发 review 应使用不同 `session_id`；`execution_confirm / resume_active / exec_plan / finalize_active` 继续只消费根级 global execution truth，不把其他 session 的 review state 误当执行事实
 - plan-only orchestrator 对应 `.sopify-runtime/scripts/go_plan_runtime.py`
 - `answer_questions` 命中后可选使用内部 helper `.sopify-runtime/scripts/clarification_bridge_runtime.py` 读取/写回轻量 clarification form；它不是新的主入口
 - manifest 会通过 `limits.clarification_bridge_entry` 与 `limits.clarification_bridge_hosts` 暴露该 helper 与宿主桥接提示
+- clarification / decision bridge helper 支持可选 `--session-id`，宿主在 session-scoped review checkpoint 下应继续透传
 - `confirm_decision` 命中后可选使用内部 helper `.sopify-runtime/scripts/decision_bridge_runtime.py` 读取/写回桥接契约；它不是新的主入口
 - manifest 会通过 `limits.decision_bridge_entry` 与 `limits.decision_bridge_hosts` 暴露该 helper 与宿主桥接提示
 - `continue_host_develop` 命中后，若宿主在开发中再次遇到用户拍板分叉，必须调用内部 helper `.sopify-runtime/scripts/develop_checkpoint_runtime.py submit --payload-json ...` 生成标准化 develop checkpoint；它不是新的主入口

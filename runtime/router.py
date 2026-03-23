@@ -220,16 +220,29 @@ def match_runtime_first_guard(text: str) -> dict[str, str] | None:
 class Router:
     """Classify user input into deterministic runtime routes."""
 
-    def __init__(self, config: RuntimeConfig, *, state_store: StateStore) -> None:
+    def __init__(self, config: RuntimeConfig, *, state_store: StateStore, global_state_store: StateStore | None = None) -> None:
         self.config = config
         self.state_store = state_store
+        self.global_state_store = global_state_store or state_store
 
     def classify(self, user_input: str, *, skills: Iterable[SkillMeta]) -> RouteDecision:
         text = user_input.strip()
-        active_run = self.state_store.get_current_run()
-        current_plan = self.state_store.get_current_plan()
-        current_clarification = self.state_store.get_current_clarification()
-        current_decision = self.state_store.get_current_decision()
+        review_active_run = self.state_store.get_current_run()
+        review_current_plan = self.state_store.get_current_plan()
+        review_current_clarification = self.state_store.get_current_clarification()
+        review_current_decision = self.state_store.get_current_decision()
+
+        global_active_run = self.global_state_store.get_current_run()
+        global_current_plan = self.global_state_store.get_current_plan()
+        global_current_clarification = self.global_state_store.get_current_clarification()
+        global_current_decision = self.global_state_store.get_current_decision()
+
+        # Review checkpoints stay session-first; execution truth stays global-first.
+        current_clarification = review_current_clarification or global_current_clarification
+        current_decision = review_current_decision or global_current_decision
+        execution_active_run = global_active_run or review_active_run
+        execution_current_plan = global_current_plan or review_current_plan
+        current_plan = review_current_plan or global_current_plan
 
         decide_decision = _classify_decide_command(text, skills=skills)
         if decide_decision is not None:
@@ -256,7 +269,7 @@ class Router:
                 runtime_skill_id=_runtime_skill("replay", skills, "workflow-learning"),
             )
 
-        if active_run is not None and _normalize(text) in _CANCEL_KEYWORDS:
+        if (global_active_run is not None or review_active_run is not None) and _normalize(text) in _CANCEL_KEYWORDS:
             return RouteDecision(
                 route_name="cancel_active",
                 request_text=text,
@@ -264,6 +277,9 @@ class Router:
                 complexity="simple",
                 should_recover_context=True,
                 active_run_action="cancel",
+                artifacts={
+                    "cancel_scope": "global" if global_active_run is not None else "session",
+                },
             )
 
         if current_decision is not None and current_decision.status in {"pending", "collecting", "confirmed", "cancelled", "timed_out"}:
@@ -276,11 +292,11 @@ class Router:
             if pending_decision is not None:
                 return self._with_capture(pending_decision)
 
-        if active_run is not None and current_plan is not None:
+        if execution_active_run is not None and execution_current_plan is not None:
             pending_execution_confirm = _classify_pending_execution_confirm(
                 text,
-                active_run_stage=active_run.stage,
-                current_plan=current_plan,
+                active_run_stage=execution_active_run.stage,
+                current_plan=execution_current_plan,
                 command_decision=command_decision,
                 skills=skills,
             )
@@ -290,7 +306,7 @@ class Router:
         if command_decision is not None:
             return self._with_capture(command_decision)
 
-        if active_run is not None and _normalize(text) in _CONTINUE_KEYWORDS:
+        if execution_active_run is not None and _normalize(text) in _CONTINUE_KEYWORDS:
             return self._with_capture(
                 RouteDecision(
                     route_name="resume_active",

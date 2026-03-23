@@ -41,6 +41,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional override for the global sopify config path.",
     )
+    parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Optional session id used to resolve session-scoped review checkpoints.",
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -65,16 +70,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = load_runtime_config(workspace_root, global_config_path=args.global_config_path)
         if args.command == "inspect":
-            payload = _inspect_bridge(config=config)
+            payload = _inspect_bridge(config=config, session_id=args.session_id)
         elif args.command == "submit":
             payload = _submit_bridge(
                 config=config,
+                session_id=args.session_id,
                 answers_json=args.answers_json,
                 source=args.source,
                 message=args.message,
             )
         else:
-            payload = _prompt_bridge(config=config, renderer=args.renderer)
+            payload = _prompt_bridge(config=config, session_id=args.session_id, renderer=args.renderer)
     except (ConfigError, ClarificationBridgeError, ValueError, json.JSONDecodeError) as exc:
         print(json.dumps({"status": "error", "message": str(exc)}, ensure_ascii=False, indent=2))
         return 1
@@ -83,8 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _inspect_bridge(*, config) -> dict[str, object]:
-    context = load_clarification_bridge_context(config=config)
+def _inspect_bridge(*, config, session_id: str | None) -> dict[str, object]:
+    context = load_clarification_bridge_context(config=config, session_id=session_id)
     bridge = build_cli_clarification_bridge(context, language=config.language)
     return {
         "status": "ready",
@@ -95,11 +101,12 @@ def _inspect_bridge(*, config) -> dict[str, object]:
 def _submit_bridge(
     *,
     config,
+    session_id: str | None,
     answers_json: str,
     source: str | None,
     message: str,
 ) -> dict[str, object]:
-    context = load_clarification_bridge_context(config=config)
+    context = load_clarification_bridge_context(config=config, session_id=session_id)
     answers = json.loads(answers_json)
     if not isinstance(answers, dict):
         raise ValueError("answers-json must decode to an object")
@@ -111,7 +118,7 @@ def _submit_bridge(
         language=config.language,
         message=message,
     )
-    updated = write_clarification_submission(config=config, submission=submission)
+    updated = write_clarification_submission(config=config, submission=submission, session_id=session_id)
     return {
         "status": "written",
         "clarification_id": updated.clarification_id,
@@ -121,7 +128,7 @@ def _submit_bridge(
     }
 
 
-def _prompt_bridge(*, config, renderer: str) -> dict[str, object]:
+def _prompt_bridge(*, config, session_id: str | None, renderer: str) -> dict[str, object]:
     def _stderr_reader(prompt: str) -> str:
         if prompt:
             print(prompt, end="", file=sys.stderr, flush=True)
@@ -132,6 +139,7 @@ def _prompt_bridge(*, config, renderer: str) -> dict[str, object]:
 
     submission, used_renderer = prompt_cli_clarification_submission(
         config=config,
+        session_id=session_id,
         renderer=renderer,
         input_reader=_stderr_reader,
         output_writer=lambda message: print(message, file=sys.stderr),

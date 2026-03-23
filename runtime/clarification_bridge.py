@@ -20,7 +20,6 @@ from .cli_interactive import (
     resolve_cli_renderer,
 )
 from .clarification import (
-    CURRENT_CLARIFICATION_RELATIVE_PATH,
     build_scope_clarification_form,
     clarification_submission_state_payload,
     normalize_clarification_answers,
@@ -31,7 +30,6 @@ from .entry_guard import (
     CLARIFICATION_BRIDGE_HANDOFF_MISMATCH_REASON,
     DEFAULT_RUNTIME_ENTRY as ENTRY_GUARD_DEFAULT_RUNTIME_ENTRY,
 )
-from .handoff import CURRENT_HANDOFF_RELATIVE_PATH
 from .models import ClarificationState, RuntimeConfig, RuntimeHandoff
 from .state import StateStore
 
@@ -51,15 +49,20 @@ class ClarificationBridgeError(ValueError):
 class ClarificationBridgeContext:
     """Resolved host-bridge context for the active clarification."""
 
+    state_store: StateStore
     handoff: RuntimeHandoff | None
     clarification_state: ClarificationState
     clarification_form: Mapping[str, Any]
     submission_state: Mapping[str, Any]
 
 
-def load_clarification_bridge_context(*, config: RuntimeConfig) -> ClarificationBridgeContext:
+def load_clarification_bridge_context(
+    *,
+    config: RuntimeConfig,
+    session_id: str | None = None,
+) -> ClarificationBridgeContext:
     """Load the active clarification plus the host-facing handoff snapshot."""
-    state_store = StateStore(config)
+    state_store = _resolve_clarification_state_store(config=config, session_id=session_id)
     clarification_state = state_store.get_current_clarification()
     if clarification_state is None:
         raise ClarificationBridgeError("No active clarification checkpoint was found")
@@ -75,6 +78,7 @@ def load_clarification_bridge_context(*, config: RuntimeConfig) -> Clarification
     )
     submission_state = _resolve_submission_state(handoff=handoff, clarification_state=clarification_state)
     return ClarificationBridgeContext(
+        state_store=state_store,
         handoff=handoff,
         clarification_state=clarification_state,
         clarification_form=clarification_form,
@@ -115,9 +119,14 @@ def build_clarification_submission(
     }
 
 
-def write_clarification_submission(*, config: RuntimeConfig, submission: Mapping[str, Any]) -> ClarificationState:
-    """Write a validated clarification response into `current_clarification.json`."""
-    state_store = StateStore(config)
+def write_clarification_submission(
+    *,
+    config: RuntimeConfig,
+    submission: Mapping[str, Any],
+    session_id: str | None = None,
+) -> ClarificationState:
+    """Write a validated clarification response into the resolved clarification state file."""
+    state_store = _resolve_clarification_state_store(config=config, session_id=session_id)
     updated = state_store.set_current_clarification_response(
         response_text=str(submission.get("response_text") or "").strip(),
         response_fields=submission.get("response_fields") if isinstance(submission.get("response_fields"), Mapping) else {},
@@ -132,13 +141,14 @@ def write_clarification_submission(*, config: RuntimeConfig, submission: Mapping
 def prompt_cli_clarification_submission(
     *,
     config: RuntimeConfig,
+    session_id: str | None = None,
     renderer: str = "auto",
     input_reader: PromptReader = input,
     output_writer: PromptWriter = print,
     interactive_session_factory: InteractiveSessionFactory | None = None,
 ) -> tuple[Mapping[str, Any], str]:
     """Collect clarification answers through the CLI interactive renderer or text fallback."""
-    context = load_clarification_bridge_context(config=config)
+    context = load_clarification_bridge_context(config=config, session_id=session_id)
     try:
         used_renderer, _interactive_session = resolve_cli_renderer(
             renderer=renderer,
@@ -164,7 +174,7 @@ def prompt_cli_clarification_submission(
         language=config.language,
         message=_message(config.language, "cli_submission_message"),
     )
-    write_clarification_submission(config=config, submission=submission)
+    write_clarification_submission(config=config, submission=submission, session_id=session_id)
     return submission, used_renderer
 
 
@@ -181,8 +191,10 @@ def _bridge_payload(
         "required_host_action": "answer_questions",
         "default_runtime_entry": DEFAULT_RUNTIME_ENTRY,
         "clarification_bridge_entry": CLARIFICATION_BRIDGE_ENTRY,
-        "handoff_file": CURRENT_HANDOFF_RELATIVE_PATH,
-        "clarification_file": CURRENT_CLARIFICATION_RELATIVE_PATH,
+        "state_scope": context.state_store.scope,
+        "session_id": context.state_store.session_id,
+        "handoff_file": context.state_store.relative_path(context.state_store.current_handoff_path),
+        "clarification_file": context.state_store.relative_path(context.state_store.current_clarification_path),
         "clarification_id": context.clarification_state.clarification_id,
         "clarification_status": context.clarification_state.status,
         "summary": context.clarification_state.summary,
@@ -288,6 +300,18 @@ def _resolve_submission_state(
         if isinstance(payload, Mapping):
             return dict(payload)
     return dict(clarification_submission_state_payload(clarification_state))
+
+
+def _resolve_clarification_state_store(*, config: RuntimeConfig, session_id: str | None) -> StateStore:
+    # Review checkpoints are session-scoped, while develop-time follow-ups can
+    # still be emitted from the single global execution truth.
+    review_store = StateStore(config, session_id=session_id) if session_id else None
+    if review_store is not None and review_store.get_current_clarification() is not None:
+        return review_store
+    global_store = StateStore(config)
+    if global_store.get_current_clarification() is not None:
+        return global_store
+    return review_store or global_store
 
 
 def _prompt_cli_input(

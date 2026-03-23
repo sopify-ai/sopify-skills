@@ -166,9 +166,10 @@ def _prepare_ready_plan_state(
     workspace: Path,
     *,
     request_text: str = "补 runtime 骨架",
+    session_id: str | None = None,
 ) -> tuple[object, StateStore, PlanArtifact]:
     config = load_runtime_config(workspace)
-    store = StateStore(config)
+    store = StateStore(config, session_id=session_id)
     store.ensure()
     plan_artifact = create_plan_scaffold(request_text, config=config, level="standard")
     _rewrite_background_scope(
@@ -986,7 +987,14 @@ class DecisionContractTests(unittest.TestCase):
             allow_custom_option=True,
             constraint_field_type="confirm",
         )
+        state_store = mock.Mock(spec=StateStore)
+        state_store.scope = "global"
+        state_store.session_id = None
+        state_store.current_handoff_path = Path(".sopify-skills/state/current_handoff.json")
+        state_store.current_decision_path = Path(".sopify-skills/state/current_decision.json")
+        state_store.relative_path.side_effect = lambda path: str(path)
         context = DecisionBridgeContext(
+            state_store=state_store,
             handoff=None,
             decision_state=DecisionState(
                 schema_version="2",
@@ -1655,6 +1663,157 @@ class DecisionContractTests(unittest.TestCase):
             self.assertIsNotNone(updated)
             self.assertEqual(updated.response_source, "cli")
             self.assertEqual(updated.response_fields["expected_outcome"], "补结构化 clarification bridge。")
+
+    def test_session_scoped_decision_bridge_reads_and_writes_review_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            session_id = "session-a"
+            run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                session_id=session_id,
+                user_home=workspace / "home",
+            )
+            config = load_runtime_config(workspace)
+
+            context = load_decision_bridge_context(config=config, session_id=session_id)
+            bridge = build_cli_decision_bridge(context, language="zh-CN")
+
+            self.assertEqual(bridge["state_scope"], "session")
+            self.assertEqual(bridge["session_id"], session_id)
+            self.assertIn(f"/sessions/{session_id}/", bridge["decision_file"])
+
+            submission, used_renderer = prompt_cli_decision_submission(
+                config=config,
+                session_id=session_id,
+                renderer="text",
+                input_reader=lambda _prompt: "1",
+                output_writer=lambda _message: None,
+            )
+
+            self.assertEqual(used_renderer, "text")
+            self.assertEqual(submission.answers["selected_option_id"], "option_1")
+            updated = StateStore(config, session_id=session_id).get_current_decision()
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated.submission.answers["selected_option_id"], "option_1")
+
+    def test_session_scoped_clarification_bridge_reads_and_writes_review_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            session_id = "session-b"
+            run_runtime(
+                "~go plan 优化一下",
+                workspace_root=workspace,
+                session_id=session_id,
+                user_home=workspace / "home",
+            )
+            config = load_runtime_config(workspace)
+
+            context = load_clarification_bridge_context(config=config, session_id=session_id)
+            bridge = build_cli_clarification_bridge(context, language="zh-CN")
+
+            self.assertEqual(bridge["state_scope"], "session")
+            self.assertEqual(bridge["session_id"], session_id)
+            self.assertIn(f"/sessions/{session_id}/", bridge["clarification_file"])
+
+            answers = iter(("runtime/router.py", "补结构化 clarification bridge。", "."))
+            submission, used_renderer = prompt_cli_clarification_submission(
+                config=config,
+                session_id=session_id,
+                renderer="text",
+                input_reader=lambda _prompt: next(answers),
+                output_writer=lambda _message: None,
+            )
+
+            self.assertEqual(used_renderer, "text")
+            self.assertEqual(submission["response_fields"]["target_scope"], "runtime/router.py")
+            updated = StateStore(config, session_id=session_id).get_current_clarification()
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated.response_fields["expected_outcome"], "补结构化 clarification bridge。")
+
+    def test_runtime_without_session_id_keeps_review_state_global(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = run_runtime("~go plan 补 runtime 骨架", workspace_root=workspace, user_home=workspace / "home")
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            self.assertEqual(result.route.route_name, "plan_only")
+            self.assertEqual(store.scope, "global")
+            self.assertIsNotNone(store.get_current_run())
+            self.assertIsNotNone(store.get_current_plan())
+            self.assertFalse((config.state_dir / "sessions").exists())
+
+    def test_state_store_rejects_session_ids_with_path_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+
+            with self.assertRaisesRegex(ValueError, "Session ID"):
+                StateStore(config, session_id="../escape")
+
+    def test_decision_bridge_falls_back_from_session_review_to_global_execution_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            session_id = "session-a"
+            config, _, _ = _prepare_ready_plan_state(workspace, session_id=session_id)
+            run_runtime(
+                "~go exec",
+                workspace_root=workspace,
+                session_id=session_id,
+                user_home=workspace / "home",
+            )
+            run_runtime(
+                "开始",
+                workspace_root=workspace,
+                session_id=session_id,
+                user_home=workspace / "home",
+            )
+
+            submit_develop_checkpoint(
+                {
+                    "schema_version": "1",
+                    "checkpoint_kind": "decision",
+                    "question": "是否扩大本轮改动范围？",
+                    "summary": "开发中命中范围分叉，需要用户拍板。",
+                    "options": [
+                        {"id": "option_1", "title": "维持范围", "summary": "继续当前改动", "recommended": True},
+                        {"id": "option_2", "title": "扩大范围", "summary": "回退到 plan review"},
+                    ],
+                    "resume_context": {
+                        "active_run_stage": "executing",
+                        "current_plan_path": ".sopify-skills/plan/20260319_feature",
+                        "task_refs": ["3.1"],
+                        "changed_files": ["runtime/engine.py"],
+                        "working_summary": "用户反馈可能超出当前 plan 边界。",
+                        "verification_todo": ["回到 plan review 后重新整理任务"],
+                        "resume_after": "review_or_execute_plan",
+                    },
+                },
+                config=config,
+            )
+
+            context = load_decision_bridge_context(config=config, session_id=session_id)
+            bridge = build_cli_decision_bridge(context, language="zh-CN")
+            submission, used_renderer = prompt_cli_decision_submission(
+                config=config,
+                session_id=session_id,
+                renderer="text",
+                input_reader=lambda _prompt: "1",
+                output_writer=lambda _message: None,
+            )
+
+            self.assertEqual(context.state_store.scope, "global")
+            self.assertIsNone(context.state_store.session_id)
+            self.assertEqual(bridge["state_scope"], "global")
+            self.assertEqual(bridge["decision_file"], ".sopify-skills/state/current_decision.json")
+            self.assertEqual(used_renderer, "text")
+            self.assertEqual(submission.answers["selected_option_id"], "option_1")
+            updated = StateStore(config).get_current_decision()
+            self.assertIsNotNone(updated)
+            self.assertEqual(updated.submission.answers["selected_option_id"], "option_1")
+            self.assertIsNone(StateStore(config, session_id=session_id).get_current_decision())
 
 
 class SummaryContractTests(unittest.TestCase):
@@ -3540,6 +3699,35 @@ class PreferencesPreloadTests(unittest.TestCase):
 
 
 class EngineIntegrationTests(unittest.TestCase):
+    def test_session_review_state_is_isolated_between_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            run_runtime(
+                "实现 runtime plugin bridge",
+                workspace_root=workspace,
+                session_id="session-a",
+                user_home=workspace / "home",
+            )
+            run_runtime(
+                "实现 runtime gate receipt compaction",
+                workspace_root=workspace,
+                session_id="session-b",
+                user_home=workspace / "home",
+            )
+
+            config = load_runtime_config(workspace)
+            session_a_store = StateStore(config, session_id="session-a")
+            session_b_store = StateStore(config, session_id="session-b")
+            global_store = StateStore(config)
+
+            self.assertIsNotNone(session_a_store.get_current_plan())
+            self.assertIsNotNone(session_b_store.get_current_plan())
+            self.assertNotEqual(session_a_store.get_current_plan().plan_id, session_b_store.get_current_plan().plan_id)
+            self.assertTrue(session_a_store.current_plan_path.exists())
+            self.assertTrue(session_b_store.current_plan_path.exists())
+            self.assertIsNone(global_store.get_current_plan())
+
     def test_engine_enters_clarification_before_plan_materialization(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -3648,6 +3836,113 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertIn("任务数: 5", rendered)
             self.assertIn("关键风险:", rendered)
             self.assertIn("Next: 回复 继续 / next / 开始 确认执行", rendered)
+
+    def test_session_review_plan_promotes_to_global_execution_truth_on_exec(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, _, _ = _prepare_ready_plan_state(workspace, session_id="session-a")
+
+            result = run_runtime(
+                "~go exec",
+                workspace_root=workspace,
+                session_id="session-a",
+                user_home=workspace / "home",
+            )
+
+            global_store = StateStore(config)
+            global_run = global_store.get_current_run()
+            self.assertEqual(result.route.route_name, "execution_confirm_pending")
+            self.assertIsNotNone(global_store.get_current_plan())
+            self.assertIsNotNone(global_run)
+            self.assertEqual(global_run.owner_session_id, "session-a")
+            self.assertEqual(global_run.owner_host, "runtime")
+            self.assertEqual(global_run.owner_run_id, global_run.run_id)
+            self.assertTrue(any("Promoted session review state to global execution truth" in note for note in result.notes))
+
+    def test_soft_ownership_warning_is_emitted_when_promotion_replaces_existing_owner(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, _, _ = _prepare_ready_plan_state(workspace, session_id="session-a")
+            run_runtime(
+                "~go exec",
+                workspace_root=workspace,
+                session_id="session-a",
+                user_home=workspace / "home",
+            )
+            global_store = StateStore(config)
+            global_store.clear_current_plan()
+            _prepare_ready_plan_state(
+                workspace,
+                request_text="实现 runtime plugin bridge",
+                session_id="session-b",
+            )
+
+            result = run_runtime(
+                "~go exec",
+                workspace_root=workspace,
+                session_id="session-b",
+                user_home=workspace / "home",
+            )
+
+            global_run = global_store.get_current_run()
+            self.assertEqual(result.route.route_name, "execution_confirm_pending")
+            self.assertTrue(any("Soft ownership warning" in note for note in result.notes))
+            self.assertIsNotNone(global_run)
+            self.assertEqual(global_run.owner_session_id, "session-b")
+
+    def test_cancel_active_clears_global_execution_before_session_review(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, _, _ = _prepare_ready_plan_state(workspace, session_id="session-a")
+            run_runtime(
+                "~go exec",
+                workspace_root=workspace,
+                session_id="session-a",
+                user_home=workspace / "home",
+            )
+            run_runtime(
+                "实现 runtime plugin bridge",
+                workspace_root=workspace,
+                session_id="session-b",
+                user_home=workspace / "home",
+            )
+
+            result = run_runtime(
+                "取消",
+                workspace_root=workspace,
+                session_id="session-b",
+                user_home=workspace / "home",
+            )
+
+            global_store = StateStore(config)
+            review_store = StateStore(config, session_id="session-b")
+            self.assertEqual(result.route.route_name, "cancel_active")
+            self.assertIsNone(global_store.get_current_run())
+            self.assertIsNone(global_store.get_current_plan())
+            self.assertIsNotNone(review_store.get_current_run())
+            self.assertIsNotNone(review_store.get_current_plan())
+            self.assertTrue(any("Global execution flow cleared; session review state preserved" in note for note in result.notes))
+
+    def test_cancel_active_clears_only_session_review_when_global_execution_is_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config, _, _ = _prepare_ready_plan_state(workspace, session_id="session-a")
+
+            result = run_runtime(
+                "取消",
+                workspace_root=workspace,
+                session_id="session-a",
+                user_home=workspace / "home",
+            )
+
+            global_store = StateStore(config)
+            review_store = StateStore(config, session_id="session-a")
+            self.assertEqual(result.route.route_name, "cancel_active")
+            self.assertIsNone(global_store.get_current_run())
+            self.assertIsNone(global_store.get_current_plan())
+            self.assertIsNone(review_store.get_current_run())
+            self.assertIsNone(review_store.get_current_plan())
+            self.assertTrue(any("Session review flow cleared" in note for note in result.notes))
 
     def test_natural_language_execution_confirmation_starts_executing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -4880,6 +5175,8 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue(manifest["capabilities"]["preferences_preload"])
             self.assertTrue(manifest["capabilities"]["runtime_gate"])
             self.assertTrue(manifest["capabilities"]["runtime_entry_guard"])
+            self.assertTrue(manifest["capabilities"]["session_scoped_review_state"])
+            self.assertTrue(manifest["capabilities"]["soft_execution_ownership"])
             self.assertTrue(manifest["capabilities"]["writes_decision_file"])
             self.assertEqual(manifest["runtime_first_hints"]["force_route_name"], "workflow")
             self.assertEqual(
@@ -4903,6 +5200,11 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(manifest["limits"]["entry_guard"]["default_runtime_entry"], "scripts/sopify_runtime.py")
             self.assertIn("confirm_execute", manifest["limits"]["entry_guard"]["pending_checkpoint_actions"])
             self.assertIn("~go exec", manifest["limits"]["entry_guard"]["bypass_blocked_commands"])
+            self.assertEqual(manifest["limits"]["session_state"]["review_scope"], "session")
+            self.assertEqual(manifest["limits"]["session_state"]["execution_scope"], "global")
+            self.assertEqual(manifest["limits"]["session_state"]["source"], "host_supplied_or_runtime_gate_generated")
+            self.assertEqual(manifest["limits"]["session_state"]["followup_session_id"], "required_for_review_followups")
+            self.assertEqual(manifest["limits"]["session_state"]["cleanup_days"], 7)
             self.assertIn("finalize_active", manifest["supported_routes"])
             self.assertIn("compare", manifest["supported_routes"])
             self.assertIn("exec_plan", manifest["limits"]["host_required_routes"])
@@ -5049,9 +5351,9 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(gate_payload["allowed_response_mode"], "normal_runtime_followup")
             self.assertEqual(gate_payload["handoff"]["required_host_action"], "continue_host_workflow")
             self.assertIn(".sopify-skills/plan/", completed.stdout)
-            self.assertTrue((workspace / ".sopify-skills" / "state" / "current_handoff.json").exists())
+            self.assertTrue((workspace / gate_payload["state"]["current_handoff_path"]).exists())
             self.assertTrue((workspace / ".sopify-skills" / "state" / "current_gate_receipt.json").exists())
-            self.assertTrue((workspace / ".sopify-skills" / "state" / "current_plan.json").exists())
+            self.assertTrue((workspace / gate_payload["state"]["current_plan_path"]).exists())
             self.assertTrue((workspace / ".sopify-skills" / "replay" / "sessions").exists())
             self.assertTrue((workspace / ".sopify-skills" / "project.md").exists())
             self.assertTrue((workspace / ".sopify-skills" / "blueprint" / "README.md").exists())

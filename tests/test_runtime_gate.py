@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -52,9 +54,10 @@ def _prepare_ready_plan_state(
     workspace: Path,
     *,
     request_text: str = "补 runtime gate 骨架",
+    session_id: str | None = None,
 ) -> PlanArtifact:
     config = load_runtime_config(workspace)
-    store = StateStore(config)
+    store = StateStore(config, session_id=session_id)
     store.ensure()
     plan_artifact = create_plan_scaffold(request_text, config=config, level="standard")
     _rewrite_background_scope(
@@ -212,10 +215,12 @@ class RuntimeGateTests(unittest.TestCase):
                 user_home=workspace / "home",
             )
             self.assertEqual(first["status"], "ready")
+            session_id = first["session_id"]
 
             result = enter_runtime_gate(
                 "~go finalize",
                 workspace_root=workspace,
+                session_id=session_id,
                 user_home=workspace / "home",
             )
 
@@ -226,13 +231,15 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertTrue(result["evidence"]["handoff_found"])
 
             config = load_runtime_config(workspace)
+            review_store = StateStore(config, session_id=session_id)
             store = StateStore(config)
-            self.assertIsNotNone(store.get_current_plan())
+            self.assertIsNotNone(review_store.get_current_plan())
+            self.assertIsNone(store.get_current_plan())
             persisted_handoff = store.get_current_handoff()
             self.assertIsNotNone(persisted_handoff)
             self.assertEqual(persisted_handoff.required_host_action, "review_or_execute_plan")
             self.assertEqual(persisted_handoff.artifacts["finalize_status"], "blocked")
-            self.assertEqual(persisted_handoff.artifacts["active_plan_path"], store.get_current_plan().path)
+            self.assertEqual(persisted_handoff.artifacts["active_plan_path"], review_store.get_current_plan().path)
             self.assertFalse(persisted_handoff.artifacts["state_cleared"])
 
     def test_gate_surfaces_trigger_evidence_for_protected_plan_assets(self) -> None:
@@ -267,10 +274,12 @@ class RuntimeGateTests(unittest.TestCase):
                 user_home=workspace / "home",
             )
             self.assertEqual(first["status"], "ready")
+            session_id = first["session_id"]
 
             result = enter_runtime_gate(
                 "~summary",
                 workspace_root=workspace,
+                session_id=session_id,
                 user_home=workspace / "home",
             )
 
@@ -281,6 +290,88 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertFalse(result["evidence"]["persisted_handoff_matches_current_request"])
             self.assertEqual(result["observability"]["runtime_route_name"], "summary")
             self.assertIn("补 runtime gate 骨架", result["observability"]["persisted_handoff"]["request_excerpt"])
+
+    def test_gate_generates_session_id_and_session_scoped_state_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertRegex(result["session_id"], r"^session-[0-9a-f]{12}$")
+            self.assertEqual(result["state"]["scope"], "session")
+            self.assertIn(result["session_id"], result["state"]["state_root"])
+            self.assertIn(result["session_id"], result["state"]["current_plan_path"])
+
+    def test_gate_rejects_invalid_session_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                session_id="../escape",
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertFalse(result["gate_passed"])
+            self.assertEqual(result["error_code"], "invalid_request")
+
+    def test_gate_cleans_expired_session_dirs_on_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            stale_store = StateStore(config, session_id="stale-session")
+            stale_store.ensure()
+            stale_store.last_route_path.write_text(
+                json.dumps(
+                    {
+                        "route_name": "workflow",
+                        "updated_at": "2000-01-01T00:00:00+00:00",
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = enter_runtime_gate(
+                "重构数据库层",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertFalse(stale_store.root.exists())
+
+    def test_gate_cleanup_tolerates_invalid_last_route_json(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            stale_store = StateStore(config, session_id="broken-session")
+            stale_store.ensure()
+            stale_store.last_route_path.write_text("{not-json", encoding="utf-8")
+            old_timestamp = 946684800
+            os.utime(stale_store.last_route_path, (old_timestamp, old_timestamp))
+
+            result = enter_runtime_gate(
+                "重构数据库层",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertFalse(stale_store.root.exists())
+            self.assertIn(
+                ".sopify-skills/state/sessions/broken-session",
+                result["observability"].get("cleaned_session_dirs", []),
+            )
 
     def test_gate_fail_closes_when_handoff_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

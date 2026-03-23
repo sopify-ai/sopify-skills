@@ -6,6 +6,32 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-23.143454] - 2026-03-23
+
+### Changed
+
+- Updated release-relevant files:
+  - `.sopify-skills/blueprint/design.md`
+  - `README.md`
+  - `runtime/clarification_bridge.py`
+  - `runtime/decision_bridge.py`
+  - `runtime/engine.py`
+  - `runtime/gate.py`
+  - `runtime/manifest.py`
+  - `runtime/models.py`
+  - `runtime/router.py`
+  - `runtime/state.py`
+  - `scripts/check-prompt-runtime-gate-smoke.py`
+  - `scripts/clarification_bridge_runtime.py`
+  - `scripts/decision_bridge_runtime.py`
+  - `scripts/runtime_gate.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_runtime.py`
+  - `tests/test_runtime_gate.py`
+
 ## [2026-03-23.122831] - 2026-03-23
 
 ### Changed

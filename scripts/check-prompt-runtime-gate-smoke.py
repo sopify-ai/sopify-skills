@@ -15,7 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any
+from typing import Any, Mapping
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -198,8 +198,7 @@ def _run_gate_scenario(
     state_dir = workspace / ".sopify-skills" / "state"
     receipt_path = state_dir / CURRENT_GATE_RECEIPT_FILENAME
     receipt = _load_json(receipt_path) if receipt_path.exists() else {}
-    handoff_path = state_dir / "current_handoff.json"
-    handoff = _load_json(handoff_path) if handoff_path.exists() else {}
+    handoff = _load_gate_handoff(workspace=workspace, payload=payload)
 
     failures: list[str] = []
     if exit_code != expected_exit_code:
@@ -237,7 +236,8 @@ def _run_gate_scenario(
         failures.append(f"error_code expected {expected_error_code}, got {actual_error_code}")
 
     for filename in expected_state_files:
-        if not (state_dir / filename).exists():
+        path = _resolve_expected_state_path(workspace=workspace, payload=payload, filename=filename)
+        if path is None or not path.exists():
             failures.append(f"missing state file: {filename}")
 
     if not receipt:
@@ -311,6 +311,37 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"Expected JSON object in {path}")
     return payload
+
+
+def _resolve_expected_state_path(*, workspace: Path, payload: Mapping[str, Any], filename: str) -> Path | None:
+    if filename == CURRENT_GATE_RECEIPT_FILENAME:
+        return workspace / ".sopify-skills" / "state" / CURRENT_GATE_RECEIPT_FILENAME
+
+    state_contract = payload.get("state")
+    if not isinstance(state_contract, Mapping):
+        return None
+    relative_path = {
+        "current_plan.json": state_contract.get("current_plan_path"),
+        "current_run.json": state_contract.get("current_run_path"),
+        "current_handoff.json": state_contract.get("current_handoff_path"),
+        "current_clarification.json": state_contract.get("current_clarification_path"),
+        "current_decision.json": state_contract.get("current_decision_path"),
+        "last_route.json": state_contract.get("last_route_path"),
+    }.get(filename)
+    if not isinstance(relative_path, str) or not relative_path.strip():
+        return None
+    return workspace / relative_path
+
+
+def _load_gate_handoff(*, workspace: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+    handoff_path = _resolve_expected_state_path(
+        workspace=workspace,
+        payload=payload,
+        filename="current_handoff.json",
+    )
+    if handoff_path is None or not handoff_path.exists():
+        return {}
+    return _load_json(handoff_path)
 
 
 def _rewrite_background_scope(

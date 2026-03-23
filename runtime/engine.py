@@ -34,7 +34,7 @@ from .execution_gate import evaluate_execution_gate
 from .finalize import finalize_plan
 from .handoff import build_runtime_handoff
 from .kb import bootstrap_kb, ensure_blueprint_index, ensure_blueprint_scaffold
-from .models import ClarificationState, DecisionState, ExecutionGate, KbArtifact, PlanArtifact, ReplayEvent, RouteDecision, RunState, RuntimeHandoff, RuntimeResult, SkillActivation, SkillMeta
+from .models import ClarificationState, DecisionState, ExecutionGate, KbArtifact, PlanArtifact, ReplayEvent, RouteDecision, RunState, RuntimeConfig, RuntimeHandoff, RuntimeResult, SkillActivation, SkillMeta
 from .plan_registry import (
     PlanRegistryError,
     encode_priority_note_event,
@@ -67,6 +67,200 @@ _CURRENT_PLAN_ANCHOR_PATTERNS = (
     re.compile(r"(current|active)\s+plan", re.IGNORECASE),
     re.compile(r"(继续|回到|基于|沿用|挂到|并入|写进|写入).*(plan|方案)", re.IGNORECASE),
 )
+# These routes operate on the single root-scoped execution truth once review
+# state is explicitly promoted out of a session.
+_GLOBAL_EXECUTION_ROUTES = frozenset({"execution_confirm_pending", "resume_active", "exec_plan", "finalize_active"})
+# Only stable review checkpoints may be promoted into the global execution
+# truth consumed by execution-confirm, resume, and finalize.
+_PROMOTABLE_REVIEW_STAGES = frozenset({"plan_generated", "ready_for_execution", "execution_confirm_pending", "develop_pending"})
+
+
+def _recovery_store_for_route(
+    decision: RouteDecision,
+    *,
+    review_store: StateStore,
+    global_store: StateStore,
+) -> StateStore:
+    if decision.route_name in _GLOBAL_EXECUTION_ROUTES and global_store.get_current_run() is not None:
+        return global_store
+    return review_store
+
+
+def _handle_cancel_active(
+    decision: RouteDecision,
+    *,
+    review_store: StateStore,
+    global_store: StateStore,
+) -> tuple[StateStore, list[str]]:
+    cancel_scope = str(decision.artifacts.get("cancel_scope") or "").strip()
+    global_run = global_store.get_current_run()
+    if cancel_scope != "session" and global_run is not None:
+        global_store.reset_active_flow()
+        if review_store is global_store or review_store.get_current_run() is None:
+            return (global_store, ["Global execution flow cleared"])
+        return (global_store, ["Global execution flow cleared; session review state preserved"])
+    review_store.reset_active_flow()
+    return (review_store, ["Session review flow cleared"])
+
+
+def _resolve_execution_state_store(
+    decision: RouteDecision,
+    *,
+    config: RuntimeConfig,
+    review_store: StateStore,
+    global_store: StateStore,
+    session_id: str | None,
+) -> tuple[StateStore, Any, list[str]]:
+    if global_store.get_current_run() is not None and global_store.get_current_plan() is not None:
+        recovered = recover_context(decision, config=config, state_store=global_store)
+        return (global_store, recovered, [])
+
+    promotion_notes = _promote_review_state_to_global_execution(
+        review_store=review_store,
+        global_store=global_store,
+        session_id=session_id,
+    )
+    recovered = recover_context(
+        decision,
+        config=config,
+        state_store=global_store if global_store.get_current_run() is not None else review_store,
+    )
+    return (global_store, recovered, promotion_notes)
+
+
+def _promote_review_state_to_global_execution(
+    *,
+    review_store: StateStore,
+    global_store: StateStore,
+    session_id: str | None,
+) -> list[str]:
+    if review_store is global_store:
+        return []
+    review_plan = review_store.get_current_plan()
+    review_run = review_store.get_current_run()
+    if review_plan is None or review_run is None:
+        return []
+    if review_run.stage not in _PROMOTABLE_REVIEW_STAGES:
+        return []
+
+    notes: list[str] = []
+    existing_owner = global_store.get_current_run()
+    if (
+        existing_owner is not None
+        and existing_owner.owner_session_id
+        and session_id
+        and existing_owner.owner_session_id != session_id
+    ):
+        notes.append(
+            f"Soft ownership warning: overwriting global execution context owned by session {existing_owner.owner_session_id}"
+        )
+
+    # Promotion is the explicit handoff point from session review state into the
+    # single global execution truth used by execution-confirm / resume / finalize.
+    global_store.set_current_plan(review_plan)
+    _set_execution_run_state(global_store, review_run, session_id=session_id)
+    review_handoff = review_store.get_current_handoff()
+    if review_handoff is not None:
+        global_store.set_current_handoff(
+            _with_global_handoff_ownership(
+                review_handoff,
+                current_run=review_run,
+                session_id=session_id,
+            )
+        )
+    notes.append(f"Promoted session review state to global execution truth from {review_store.root.name}")
+    return notes
+
+
+def _set_execution_run_state(
+    state_store: StateStore,
+    run_state: RunState,
+    *,
+    session_id: str | None,
+) -> None:
+    if state_store.session_id is not None:
+        state_store.set_current_run(run_state)
+        return
+    state_store.set_current_run(_with_global_run_ownership(run_state, session_id=session_id))
+
+
+def _with_global_run_ownership(run_state: RunState, *, session_id: str | None) -> RunState:
+    owner_session_id = str(session_id or run_state.owner_session_id or "").strip()
+    return RunState(
+        run_id=run_state.run_id,
+        status=run_state.status,
+        stage=run_state.stage,
+        route_name=run_state.route_name,
+        title=run_state.title,
+        created_at=run_state.created_at,
+        updated_at=run_state.updated_at,
+        plan_id=run_state.plan_id,
+        plan_path=run_state.plan_path,
+        execution_gate=run_state.execution_gate,
+        request_excerpt=run_state.request_excerpt,
+        request_sha1=run_state.request_sha1,
+        owner_session_id=owner_session_id,
+        owner_host=run_state.owner_host or "runtime",
+        owner_run_id=run_state.owner_run_id or run_state.run_id,
+    )
+
+
+def _with_global_handoff_ownership(
+    handoff: RuntimeHandoff,
+    *,
+    current_run: RunState | None,
+    session_id: str | None,
+) -> RuntimeHandoff:
+    observability = dict(handoff.observability)
+    owner_session_id = ""
+    if current_run is not None:
+        owner_session_id = current_run.owner_session_id
+    if not owner_session_id:
+        owner_session_id = str(session_id or "").strip()
+    if owner_session_id:
+        observability["owner_session_id"] = owner_session_id
+    if current_run is not None:
+        if current_run.owner_host:
+            observability["owner_host"] = current_run.owner_host
+        if current_run.owner_run_id:
+            observability["owner_run_id"] = current_run.owner_run_id
+    return RuntimeHandoff(
+        schema_version=handoff.schema_version,
+        route_name=handoff.route_name,
+        run_id=handoff.run_id,
+        plan_id=handoff.plan_id,
+        plan_path=handoff.plan_path,
+        handoff_kind=handoff.handoff_kind,
+        required_host_action=handoff.required_host_action,
+        recommended_skill_ids=handoff.recommended_skill_ids,
+        artifacts=handoff.artifacts,
+        notes=handoff.notes,
+        observability=observability,
+    )
+
+
+def _result_state_store_for_route(
+    decision: RouteDecision,
+    *,
+    review_store: StateStore,
+    global_store: StateStore,
+    canceled_store: StateStore | None,
+) -> StateStore:
+    if canceled_store is not None:
+        if canceled_store is global_store and review_store.get_current_run() is not None:
+            return review_store
+        return canceled_store
+    if decision.route_name in _GLOBAL_EXECUTION_ROUTES:
+        return global_store
+    if decision.route_name in {"decision_pending", "decision_resume"}:
+        if review_store.get_current_decision() is not None:
+            return review_store
+        return global_store
+    if decision.route_name in {"clarification_pending", "clarification_resume"}:
+        if review_store.get_current_clarification() is not None:
+            return review_store
+        return global_store
+    return review_store
 
 
 def run_runtime(
@@ -74,6 +268,7 @@ def run_runtime(
     *,
     workspace_root: str | Path = ".",
     global_config_path: str | Path | None = None,
+    session_id: str | None = None,
     user_home: Path | None = None,
     runtime_payloads: Optional[Mapping[str, Mapping[str, Any]]] = None,
 ) -> RuntimeResult:
@@ -90,14 +285,24 @@ def run_runtime(
         Standardized runtime result.
     """
     config = load_runtime_config(workspace_root, global_config_path=global_config_path)
-    state_store = StateStore(config)
-    state_store.ensure()
+    review_store = StateStore(config, session_id=session_id)
+    global_store = StateStore(config)
+    review_store.ensure()
+    global_store.ensure()
     kb_artifact: KbArtifact | None = bootstrap_kb(config)
 
     skills = SkillRegistry(config, user_home=user_home).discover()
-    router = Router(config, state_store=state_store)
+    router = Router(config, state_store=review_store, global_state_store=global_store)
     classified_route = router.classify(user_input, skills=skills)
-    recovered = recover_context(classified_route, config=config, state_store=state_store)
+    recovered = recover_context(
+        classified_route,
+        config=config,
+        state_store=_recovery_store_for_route(
+            classified_route,
+            review_store=review_store,
+            global_store=global_store,
+        ),
+    )
 
     notes: list[str] = []
     plan_artifact: PlanArtifact | None = None
@@ -111,7 +316,7 @@ def run_runtime(
     confirmed_decision_for_replay: DecisionState | None = None
     registry_changed_hint = False
 
-    current_clarification = state_store.get_current_clarification()
+    current_clarification = review_store.get_current_clarification()
     if (
         current_clarification is not None
         and effective_route.route_name in {"plan_only", "workflow", "light_iterate"}
@@ -119,12 +324,12 @@ def run_runtime(
     ):
         # A new planning request supersedes the previous pending clarification.
         stale_state = stale_clarification(current_clarification)
-        state_store.set_current_clarification(stale_state)
-        state_store.clear_current_clarification()
+        review_store.set_current_clarification(stale_state)
+        review_store.clear_current_clarification()
         notes.append(f"Superseded pending clarification: {stale_state.clarification_id}")
         current_clarification = None
 
-    current_decision = state_store.get_current_decision()
+    current_decision = review_store.get_current_decision()
     if (
         current_decision is not None
         and effective_route.route_name in {"plan_only", "workflow", "light_iterate"}
@@ -132,19 +337,24 @@ def run_runtime(
     ):
         # A new planning request supersedes the previous pending checkpoint.
         stale_state = stale_decision(current_decision)
-        state_store.set_current_decision(stale_state)
-        state_store.clear_current_decision()
+        review_store.set_current_decision(stale_state)
+        review_store.clear_current_decision()
         notes.append(f"Superseded pending decision checkpoint: {stale_state.decision_id}")
         current_decision = None
 
+    canceled_store: StateStore | None = None
     if effective_route.route_name == "cancel_active":
-        state_store.reset_active_flow()
-        notes.append("Active flow cleared")
+        canceled_store, cancel_notes = _handle_cancel_active(
+            effective_route,
+            review_store=review_store,
+            global_store=global_store,
+        )
+        notes.extend(cancel_notes)
     elif effective_route.route_name == "finalize_active":
         finalized = finalize_plan(
             config=config,
-            state_store=state_store,
-            current_plan=state_store.get_current_plan() or recovered.current_plan,
+            state_store=global_store,
+            current_plan=global_store.get_current_plan() or recovered.current_plan,
         )
         plan_artifact = finalized.archived_plan
         registry_changed_hint = finalized.registry_updated
@@ -154,7 +364,7 @@ def run_runtime(
     elif effective_route.route_name == "clarification_resume":
         effective_route, plan_artifact, clarification_notes, kb_artifact = _handle_clarification_resume(
             effective_route,
-            state_store=state_store,
+            state_store=review_store,
             config=config,
             kb_artifact=kb_artifact,
         )
@@ -162,35 +372,53 @@ def run_runtime(
     elif effective_route.route_name == "decision_resume":
         effective_route, plan_artifact, decision_notes, kb_artifact, confirmed_decision_for_replay = _handle_decision_resume(
             effective_route,
-            state_store=state_store,
+            state_store=review_store,
             config=config,
             kb_artifact=kb_artifact,
         )
         notes.extend(decision_notes)
     elif effective_route.route_name == "execution_confirm_pending":
+        execution_store, execution_recovered, promotion_notes = _resolve_execution_state_store(
+            effective_route,
+            config=config,
+            review_store=review_store,
+            global_store=global_store,
+            session_id=session_id,
+        )
+        notes.extend(promotion_notes)
         effective_route, plan_artifact, execution_confirm_notes = _handle_execution_confirm(
             effective_route,
-            state_store=state_store,
+            state_store=execution_store,
             config=config,
+            session_id=session_id,
         )
+        recovered = execution_recovered
         notes.extend(execution_confirm_notes)
     elif effective_route.should_create_plan:
         effective_route, plan_artifact, planning_notes, kb_artifact = _advance_planning_route(
             effective_route,
-            state_store=state_store,
+            state_store=review_store,
             config=config,
             kb_artifact=kb_artifact,
         )
         notes.extend(planning_notes)
     elif effective_route.route_name in {"resume_active", "exec_plan"}:
-        if state_store.get_current_clarification() is not None:
+        execution_store, execution_recovered, promotion_notes = _resolve_execution_state_store(
+            effective_route,
+            config=config,
+            review_store=review_store,
+            global_store=global_store,
+            session_id=session_id,
+        )
+        notes.extend(promotion_notes)
+        if execution_store.get_current_clarification() is not None:
             effective_route = _clarification_pending_route(
                 effective_route,
                 reason="Pending clarification must be answered before execution can continue",
             )
             notes.append("Blocked execution because clarification is still pending")
         else:
-            current_plan = state_store.get_current_plan() or recovered.current_plan
+            current_plan = execution_store.get_current_plan() or execution_recovered.current_plan
             if current_plan is None:
                 if effective_route.route_name == "exec_plan":
                     effective_route = _exec_plan_unavailable_route(
@@ -205,7 +433,7 @@ def run_runtime(
                     decision=effective_route,
                     plan_artifact=current_plan,
                     current_clarification=None,
-                    current_decision=_confirmed_decision_context(state_store),
+                    current_decision=_confirmed_decision_context(execution_store),
                     config=config,
                 )
                 if gate.gate_status == "decision_required" and gate.blocking_reason != "unresolved_decision":
@@ -216,22 +444,24 @@ def run_runtime(
                         config=config,
                     )
                     if gate_decision is not None:
-                        state_store.set_current_decision(gate_decision)
-                        state_store.set_current_run(
+                        execution_store.set_current_decision(gate_decision)
+                        _set_execution_run_state(
+                            execution_store,
                             RunState(
-                                run_id=(state_store.get_current_run() or recovered.current_run).run_id if (state_store.get_current_run() or recovered.current_run) is not None else _make_run_id(effective_route.request_text),
+                                run_id=(execution_store.get_current_run() or execution_recovered.current_run).run_id if (execution_store.get_current_run() or execution_recovered.current_run) is not None else _make_run_id(effective_route.request_text),
                                 status="active",
                                 stage="decision_pending",
                                 route_name=effective_route.route_name,
                                 title=current_plan.title,
-                                created_at=(state_store.get_current_run() or recovered.current_run).created_at if (state_store.get_current_run() or recovered.current_run) is not None else current_plan.created_at,
+                                created_at=(execution_store.get_current_run() or execution_recovered.current_run).created_at if (execution_store.get_current_run() or execution_recovered.current_run) is not None else current_plan.created_at,
                                 updated_at=iso_now(),
                                 plan_id=current_plan.plan_id,
                                 plan_path=current_plan.path,
                                 execution_gate=gate,
                                 request_excerpt=summarize_request_text(effective_route.request_text),
                                 request_sha1=stable_request_sha1(effective_route.request_text),
-                            )
+                            ),
+                            session_id=session_id,
                         )
                         effective_route = _decision_pending_route(
                             effective_route,
@@ -242,19 +472,22 @@ def run_runtime(
                     else:
                         notes.append("Execution gate requires a decision before develop can continue")
                 elif gate.gate_status != "ready":
-                    state_store.set_current_run(
+                    _set_execution_run_state(
+                        execution_store,
                         _make_run_state(
                             effective_route,
                             current_plan,
                             stage="plan_generated",
                             execution_gate=gate,
-                        )
+                        ),
+                        session_id=session_id,
                     )
                     notes.extend(gate.notes)
                     notes.append("Blocked execution because the execution gate is not ready")
                 else:
-                    current_run = state_store.get_current_run() or recovered.current_run
-                    state_store.set_current_run(
+                    current_run = execution_store.get_current_run() or execution_recovered.current_run
+                    _set_execution_run_state(
+                        execution_store,
                         RunState(
                             run_id=current_run.run_id if current_run is not None else _make_run_id(effective_route.request_text),
                             status="active",
@@ -268,13 +501,22 @@ def run_runtime(
                             execution_gate=gate,
                             request_excerpt=current_run.request_excerpt if current_run is not None else summarize_request_text(effective_route.request_text),
                             request_sha1=current_run.request_sha1 if current_run is not None else stable_request_sha1(effective_route.request_text),
-                        )
+                        ),
+                        session_id=session_id,
                     )
                     notes.extend(gate.notes)
                     notes.append("Active run resumed")
+        recovered = execution_recovered
 
     if effective_route.route_name != "summary":
-        state_store.set_last_route(effective_route)
+        review_store.set_last_route(effective_route)
+
+    result_store = _result_state_store_for_route(
+        effective_route,
+        review_store=review_store,
+        global_store=global_store,
+        canceled_store=canceled_store,
+    )
 
     if effective_route.runtime_skill_id is not None:
         skill = _find_skill(skills, effective_route.runtime_skill_id)
@@ -291,16 +533,16 @@ def run_runtime(
 
     activation = _build_skill_activation(
         decision=effective_route,
-        run_state=state_store.get_current_run() or recovered.current_run,
-        current_clarification=state_store.get_current_clarification(),
-        current_decision=state_store.get_current_decision(),
+        run_state=result_store.get_current_run() or recovered.current_run,
+        current_clarification=result_store.get_current_clarification(),
+        current_decision=result_store.get_current_decision(),
     )
 
     if effective_route.route_name == "summary" and activation is not None:
         # Keep `~summary` read-only so users can inspect the day without disturbing an active handoff.
         summary_result = build_daily_summary(
             config=config,
-            state_store=state_store,
+            state_store=result_store,
             activation=activation,
         )
         skill_result = {
@@ -312,7 +554,7 @@ def run_runtime(
 
     if effective_route.capture_mode != "off":
         writer = ReplayWriter(config)
-        run_state = state_store.get_current_run() or recovered.current_run
+        run_state = result_store.get_current_run() or recovered.current_run
         run_id = run_state.run_id if run_state is not None else _make_run_id(effective_route.request_text)
         replay_event = ReplayEvent(
             ts=iso_now(),
@@ -326,7 +568,7 @@ def run_runtime(
             metadata={"activation": activation.to_dict()} if activation is not None else {},
         )
         replay_events.append(replay_event)
-        current_decision = state_store.get_current_decision()
+        current_decision = result_store.get_current_decision()
         if current_decision is not None and effective_route.route_name == "decision_pending":
             replay_events.append(
                 build_decision_replay_event(
@@ -363,7 +605,7 @@ def run_runtime(
             writer.append_event(run_id, extra_event)
         writer.render_documents(
             run_id,
-            run_state=state_store.get_current_run(),
+            run_state=result_store.get_current_run(),
             route=effective_route,
             plan_artifact=plan_artifact or recovered.current_plan,
             events=replay_events,
@@ -372,13 +614,12 @@ def run_runtime(
 
     if effective_route.route_name == "cancel_active":
         handoff = None
-        state_store.clear_current_handoff()
     elif effective_route.route_name == "summary":
         # Preserve the current handoff on disk; `~summary` should not consume or overwrite active flow state.
         handoff = None
     else:
-        current_run = state_store.get_current_run() or recovered.current_run
-        current_plan = plan_artifact or state_store.get_current_plan() or recovered.current_plan
+        current_run = result_store.get_current_run() or recovered.current_run
+        current_plan = plan_artifact or result_store.get_current_plan() or recovered.current_plan
         if effective_route.route_name == "finalize_active" and plan_artifact is not None:
             # Finalize clears active-flow state; only persist a completion handoff
             # when the archive transaction actually succeeded.
@@ -393,14 +634,20 @@ def run_runtime(
             kb_artifact=kb_artifact,
             replay_session_dir=replay_session_dir,
             skill_result=skill_result,
-            current_clarification=state_store.get_current_clarification(),
-            current_decision=state_store.get_current_decision(),
+            current_clarification=result_store.get_current_clarification(),
+            current_decision=result_store.get_current_decision(),
             notes=notes,
         )
         if handoff is not None:
-            state_store.set_current_handoff(handoff)
+            if result_store is global_store:
+                handoff = _with_global_handoff_ownership(
+                    handoff,
+                    current_run=current_run,
+                    session_id=session_id,
+                )
+            result_store.set_current_handoff(handoff)
         else:
-            state_store.clear_current_handoff()
+            result_store.clear_current_handoff()
 
     generated_files = _augment_generated_files(
         generated_files,
@@ -410,7 +657,7 @@ def run_runtime(
         notes=tuple(notes),
         registry_changed_hint=registry_changed_hint,
     )
-    latest_context = recover_context(effective_route, config=config, state_store=state_store)
+    latest_context = recover_context(effective_route, config=config, state_store=result_store)
     return RuntimeResult(
         route=effective_route,
         recovered_context=latest_context,
@@ -499,6 +746,9 @@ def _make_run_state(
         execution_gate=execution_gate,
         request_excerpt=summarize_request_text(decision.request_text),
         request_sha1=stable_request_sha1(decision.request_text),
+        owner_session_id="",
+        owner_host="",
+        owner_run_id="",
     )
 
 
@@ -517,6 +767,9 @@ def _make_decision_run_state(decision: RouteDecision, decision_state: DecisionSt
         execution_gate=execution_gate,
         request_excerpt=summarize_request_text(decision.request_text),
         request_sha1=stable_request_sha1(decision.request_text),
+        owner_session_id="",
+        owner_host="",
+        owner_run_id="",
     )
 
 
@@ -540,6 +793,9 @@ def _make_clarification_run_state(
         execution_gate=execution_gate,
         request_excerpt=summarize_request_text(decision.request_text),
         request_sha1=stable_request_sha1(decision.request_text),
+        owner_session_id="",
+        owner_host="",
+        owner_run_id="",
     )
 
 
@@ -980,6 +1236,7 @@ def _handle_execution_confirm(
     *,
     state_store: StateStore,
     config: RuntimeConfig,
+    session_id: str | None,
 ) -> tuple[RouteDecision, PlanArtifact | None, list[str]]:
     current_plan = state_store.get_current_plan()
     current_run = state_store.get_current_run()
@@ -1024,11 +1281,13 @@ def _handle_execution_confirm(
         )
 
     if response_action in {"status", "invalid"}:
-        state_store.set_current_run(
+        _set_execution_run_state(
+            state_store,
             _copy_run_state(
                 current_run,
                 stage="execution_confirm_pending",
-            )
+            ),
+            session_id=session_id,
         )
         if response_message:
             notes.append(response_message)
@@ -1044,11 +1303,13 @@ def _handle_execution_confirm(
         )
 
     if response_action == "revise":
-        state_store.set_current_run(
+        _set_execution_run_state(
+            state_store,
             _copy_run_state(
                 current_run,
                 stage="execution_confirm_pending",
-            )
+            ),
+            session_id=session_id,
         )
         notes.append("Execution confirmation deferred because plan feedback was received")
         return (
@@ -1081,7 +1342,8 @@ def _handle_execution_confirm(
         )
         if gate_decision is not None:
             state_store.set_current_decision(gate_decision)
-            state_store.set_current_run(
+            _set_execution_run_state(
+                state_store,
                 RunState(
                     run_id=current_run.run_id,
                     status="active",
@@ -1095,7 +1357,11 @@ def _handle_execution_confirm(
                     execution_gate=gate,
                     request_excerpt=current_run.request_excerpt,
                     request_sha1=current_run.request_sha1,
-                )
+                    owner_session_id=current_run.owner_session_id,
+                    owner_host=current_run.owner_host,
+                    owner_run_id=current_run.owner_run_id,
+                ),
+                session_id=session_id,
             )
             notes.extend(gate.notes)
             notes.append(f"Execution gate requested a new decision: {gate_decision.decision_id}")
@@ -1109,12 +1375,14 @@ def _handle_execution_confirm(
             )
 
     if gate.gate_status != "ready":
-        state_store.set_current_run(
+        _set_execution_run_state(
+            state_store,
             _copy_run_state(
                 current_run,
                 stage="plan_generated",
                 execution_gate=gate,
-            )
+            ),
+            session_id=session_id,
         )
         notes.extend(gate.notes)
         notes.append("Execution confirmation could not proceed because the execution gate is not ready")
@@ -1128,7 +1396,8 @@ def _handle_execution_confirm(
             notes,
         )
 
-    state_store.set_current_run(
+    _set_execution_run_state(
+        state_store,
         RunState(
             run_id=current_run.run_id,
             status="active",
@@ -1142,7 +1411,11 @@ def _handle_execution_confirm(
             execution_gate=gate,
             request_excerpt=current_run.request_excerpt,
             request_sha1=current_run.request_sha1,
-        )
+            owner_session_id=current_run.owner_session_id,
+            owner_host=current_run.owner_host,
+            owner_run_id=current_run.owner_run_id,
+        ),
+        session_id=session_id,
     )
     notes.extend(gate.notes)
     notes.append("Execution confirmed by user")
@@ -1265,6 +1538,9 @@ def _copy_run_state(
         execution_gate=next_execution_gate,
         request_excerpt=current_run.request_excerpt,
         request_sha1=current_run.request_sha1,
+        owner_session_id=current_run.owner_session_id,
+        owner_host=current_run.owner_host,
+        owner_run_id=current_run.owner_run_id,
     )
 
 

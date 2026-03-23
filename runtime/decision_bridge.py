@@ -21,14 +21,11 @@ from .cli_interactive import (
     InteractiveSessionFactory,
     resolve_cli_renderer,
 )
-
-from .decision import CURRENT_DECISION_RELATIVE_PATH
 from .entry_guard import (
     DECISION_BRIDGE_ENTRY as ENTRY_GUARD_DECISION_BRIDGE_ENTRY,
     DECISION_BRIDGE_HANDOFF_MISMATCH_REASON,
     DEFAULT_RUNTIME_ENTRY as ENTRY_GUARD_DEFAULT_RUNTIME_ENTRY,
 )
-from .handoff import CURRENT_HANDOFF_RELATIVE_PATH
 from .models import (
     DecisionCheckpoint,
     DecisionCondition,
@@ -60,15 +57,20 @@ class DecisionBridgeError(ValueError):
 class DecisionBridgeContext:
     """Resolved host-bridge context for the active decision."""
 
+    state_store: StateStore
     handoff: RuntimeHandoff | None
     decision_state: DecisionState
     checkpoint: DecisionCheckpoint
     submission_state: Mapping[str, Any]
 
 
-def load_decision_bridge_context(*, config: RuntimeConfig) -> DecisionBridgeContext:
+def load_decision_bridge_context(
+    *,
+    config: RuntimeConfig,
+    session_id: str | None = None,
+) -> DecisionBridgeContext:
     """Load the active decision plus the host-facing handoff snapshot."""
-    state_store = StateStore(config)
+    state_store = _resolve_decision_state_store(config=config, session_id=session_id)
     decision_state = state_store.get_current_decision()
     if decision_state is None:
         raise DecisionBridgeError("No active decision checkpoint was found")
@@ -80,6 +82,7 @@ def load_decision_bridge_context(*, config: RuntimeConfig) -> DecisionBridgeCont
     checkpoint = _resolve_checkpoint(handoff=handoff, decision_state=decision_state)
     submission_state = _resolve_submission_state(handoff=handoff, decision_state=decision_state)
     return DecisionBridgeContext(
+        state_store=state_store,
         handoff=handoff,
         decision_state=decision_state,
         checkpoint=checkpoint,
@@ -120,9 +123,14 @@ def build_decision_submission(
     )
 
 
-def write_decision_submission(*, config: RuntimeConfig, submission: DecisionSubmission) -> DecisionState:
-    """Write a validated submission into `current_decision.json`."""
-    state_store = StateStore(config)
+def write_decision_submission(
+    *,
+    config: RuntimeConfig,
+    submission: DecisionSubmission,
+    session_id: str | None = None,
+) -> DecisionState:
+    """Write a validated submission into the resolved decision state file."""
+    state_store = _resolve_decision_state_store(config=config, session_id=session_id)
     updated = state_store.set_current_decision_submission(submission)
     if updated is None:
         raise DecisionBridgeError("No active decision checkpoint was found while writing submission")
@@ -132,13 +140,14 @@ def write_decision_submission(*, config: RuntimeConfig, submission: DecisionSubm
 def prompt_cli_decision_submission(
     *,
     config: RuntimeConfig,
+    session_id: str | None = None,
     renderer: str = "auto",
     input_reader: PromptReader = input,
     output_writer: PromptWriter = print,
     interactive_session_factory: InteractiveSessionFactory | None = None,
 ) -> tuple[DecisionSubmission, str]:
     """Collect a decision through the CLI interactive renderer or text fallback."""
-    context = load_decision_bridge_context(config=config)
+    context = load_decision_bridge_context(config=config, session_id=session_id)
     try:
         used_renderer, interactive_session = resolve_cli_renderer(
             renderer=renderer,
@@ -170,7 +179,7 @@ def prompt_cli_decision_submission(
         source=f"cli_{used_renderer}",
         message=_message(config.language, "cli_submission_message"),
     )
-    write_decision_submission(config=config, submission=submission)
+    write_decision_submission(config=config, submission=submission, session_id=session_id)
     return submission, used_renderer
 
 
@@ -220,8 +229,10 @@ def _bridge_payload(
         "required_host_action": "confirm_decision",
         "default_runtime_entry": DEFAULT_RUNTIME_ENTRY,
         "decision_bridge_entry": DECISION_BRIDGE_ENTRY,
-        "handoff_file": CURRENT_HANDOFF_RELATIVE_PATH,
-        "decision_file": CURRENT_DECISION_RELATIVE_PATH,
+        "state_scope": context.state_store.scope,
+        "session_id": context.state_store.session_id,
+        "handoff_file": context.state_store.relative_path(context.state_store.current_handoff_path),
+        "decision_file": context.state_store.relative_path(context.state_store.current_decision_path),
         "decision_id": context.decision_state.decision_id,
         "decision_status": context.decision_state.status,
         "question": context.decision_state.question,
@@ -422,6 +433,18 @@ def _resolve_submission_state(*, handoff: RuntimeHandoff | None, decision_state:
         "has_answers": bool(submission.answers),
         "answer_keys": sorted(str(key) for key in submission.answers.keys()),
     }
+
+
+def _resolve_decision_state_store(*, config: RuntimeConfig, session_id: str | None) -> StateStore:
+    # Prefer the caller's review session, but fall back to global execution
+    # state so execution-gate decisions remain reachable through the bridge.
+    review_store = StateStore(config, session_id=session_id) if session_id else None
+    if review_store is not None and review_store.get_current_decision() is not None:
+        return review_store
+    global_store = StateStore(config)
+    if global_store.get_current_decision() is not None:
+        return global_store
+    return review_store or global_store
 
 
 def _condition_matches(condition: DecisionCondition, answers: Mapping[str, Any]) -> bool:

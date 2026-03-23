@@ -2,23 +2,30 @@
 
 from __future__ import annotations
 
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from hashlib import sha1
 import json
 from pathlib import Path
+import re
+import shutil
 from tempfile import NamedTemporaryFile
 from typing import Any, Mapping, Optional
 
 from .handoff import read_runtime_handoff
 from .models import ClarificationState, DecisionState, DecisionSubmission, PlanArtifact, RouteDecision, RunState, RuntimeConfig, RuntimeHandoff
 
+SESSIONS_DIRNAME = "sessions"
+_SAFE_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
 
 class StateStore:
     """Read and write runtime state files under `.sopify-skills/state/`."""
 
-    def __init__(self, config: RuntimeConfig) -> None:
+    def __init__(self, config: RuntimeConfig, session_id: str | None = None) -> None:
         self.config = config
-        self.root = config.state_dir
+        self.global_root = config.state_dir
+        self.session_id = normalize_session_id(session_id)
+        self.root = self.global_root / SESSIONS_DIRNAME / self.session_id if self.session_id else self.global_root
         self.current_run_path = self.root / "current_run.json"
         self.last_route_path = self.root / "last_route.json"
         self.current_plan_path = self.root / "current_plan.json"
@@ -29,6 +36,13 @@ class StateStore:
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
+    @property
+    def scope(self) -> str:
+        return "session" if self.session_id else "global"
+
+    def relative_path(self, path: Path) -> str:
+        return str(path.relative_to(self.config.workspace_root))
+
     def get_current_run(self) -> Optional[RunState]:
         payload = self._read_json(self.current_run_path)
         return RunState.from_dict(payload) if payload else None
@@ -38,18 +52,24 @@ class StateStore:
         payload = run_state.to_dict()
         payload["observability"] = {
             "state_kind": "current_run",
+            "state_scope": self.scope,
             "writer": "runtime.state",
             "written_at": iso_now(),
             "workspace_root": str(self.config.workspace_root),
             "runtime_root": str(self.config.runtime_root.relative_to(self.config.workspace_root)),
-            "state_path": str(self.current_run_path.relative_to(self.config.workspace_root)),
+            "state_path": self.relative_path(self.current_run_path),
             "run_id": run_state.run_id,
             "route_name": run_state.route_name,
             "stage": run_state.stage,
             "status": run_state.status,
             "request_excerpt": run_state.request_excerpt,
             "request_sha1": run_state.request_sha1,
+            "owner_session_id": run_state.owner_session_id,
+            "owner_host": run_state.owner_host,
+            "owner_run_id": run_state.owner_run_id,
         }
+        if self.session_id:
+            payload["observability"]["session_id"] = self.session_id
         self._write_json(self.current_run_path, payload)
 
     def clear_current_run(self) -> None:
@@ -63,6 +83,9 @@ class StateStore:
         self.ensure()
         payload = decision.to_dict()
         payload["updated_at"] = iso_now()
+        payload["state_scope"] = self.scope
+        if self.session_id:
+            payload["session_id"] = self.session_id
         self._write_json(self.last_route_path, payload)
 
     def get_current_plan(self) -> Optional[PlanArtifact]:
@@ -139,16 +162,19 @@ class StateStore:
         observability.update(
             {
                 "state_kind": "current_handoff",
+                "state_scope": self.scope,
                 "writer": "runtime.state",
                 "written_at": iso_now(),
                 "workspace_root": str(self.config.workspace_root),
                 "runtime_root": str(self.config.runtime_root.relative_to(self.config.workspace_root)),
-                "state_path": str(self.current_handoff_path.relative_to(self.config.workspace_root)),
+                "state_path": self.relative_path(self.current_handoff_path),
                 "run_id": handoff.run_id,
                 "route_name": handoff.route_name,
                 "required_host_action": handoff.required_host_action,
             }
         )
+        if self.session_id:
+            observability["session_id"] = self.session_id
         payload["observability"] = observability
         self._write_json(self.current_handoff_path, payload)
 
@@ -183,6 +209,9 @@ class StateStore:
             execution_gate=current.execution_gate,
             request_excerpt=current.request_excerpt,
             request_sha1=current.request_sha1,
+            owner_session_id=current.owner_session_id,
+            owner_host=current.owner_host,
+            owner_run_id=current.owner_run_id,
         )
         self.set_current_run(updated)
         return updated
@@ -261,3 +290,79 @@ def local_day_start_iso(day: str) -> str:
     base = local_now()
     target_date = datetime.fromisoformat(day).date()
     return datetime.combine(target_date, time.min, tzinfo=base.tzinfo).isoformat()
+
+
+def cleanup_expired_session_state(
+    config: RuntimeConfig,
+    *,
+    older_than_days: int = 7,
+) -> tuple[str, ...]:
+    """Remove stale session-state directories during gate startup."""
+    sessions_root = config.state_dir / SESSIONS_DIRNAME
+    if not sessions_root.exists():
+        return ()
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    removed: list[str] = []
+    for session_dir in sessions_root.iterdir():
+        if not session_dir.is_dir():
+            continue
+        updated_at = _session_dir_updated_at(session_dir)
+        if updated_at is None or updated_at >= cutoff:
+            continue
+        shutil.rmtree(session_dir, ignore_errors=True)
+        removed.append(str(session_dir.relative_to(config.workspace_root)))
+    return tuple(sorted(removed))
+
+
+def normalize_session_id(session_id: str | None) -> str | None:
+    """Validate session IDs before using them as state directory names."""
+    normalized = str(session_id or "").strip()
+    if not normalized:
+        return None
+    # Session IDs become directory names under `.sopify-skills/state/sessions/`,
+    # so reject path separators and bare traversal markers up front.
+    if normalized in {".", ".."} or not _SAFE_SESSION_ID_RE.fullmatch(normalized):
+        raise ValueError(
+            "Session ID must use only letters, numbers, dot, underscore, or hyphen and cannot contain path separators or traversal segments"
+        )
+    return normalized or None
+
+
+def _session_dir_updated_at(session_dir: Path) -> datetime | None:
+    last_route_path = session_dir / "last_route.json"
+    payload = _read_json_file(last_route_path)
+    updated_at = str(payload.get("updated_at") or "").strip() if payload else ""
+    if updated_at:
+        parsed = _parse_iso_datetime(updated_at)
+        if parsed is not None:
+            return parsed
+    if last_route_path.exists():
+        return datetime.fromtimestamp(last_route_path.stat().st_mtime, timezone.utc)
+    try:
+        return datetime.fromtimestamp(session_dir.stat().st_mtime, timezone.utc)
+    except FileNotFoundError:
+        return None
+
+
+def _parse_iso_datetime(raw: str) -> datetime | None:
+    if not raw:
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _read_json_file(path: Path) -> Optional[dict[str, Any]]:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None

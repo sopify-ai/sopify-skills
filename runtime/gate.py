@@ -6,12 +6,13 @@ import json
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any, Mapping
+from uuid import uuid4
 
 from .config import ConfigError, load_runtime_config
 from .engine import run_runtime
 from .entry_guard import ENTRY_GUARD_PENDING_ACTIONS
 from .preferences import PreferencesPreloadResult, preload_preferences
-from .state import StateStore, iso_now, stable_request_sha1, summarize_request_text
+from .state import StateStore, cleanup_expired_session_state, iso_now, normalize_session_id, stable_request_sha1, summarize_request_text
 from .workspace_preflight import WorkspacePreflightError, preflight_workspace_runtime
 
 GATE_SCHEMA_VERSION = "1"
@@ -28,6 +29,7 @@ def enter_runtime_gate(
     workspace_root: str | Path = ".",
     global_config_path: str | Path | None = None,
     payload_manifest_path: str | Path | None = None,
+    session_id: str | None = None,
     user_home: Path | None = None,
     write_receipt: bool = True,
 ) -> dict[str, Any]:
@@ -49,12 +51,16 @@ def enter_runtime_gate(
             )
         )
         config = load_runtime_config(workspace, global_config_path=global_config_path)
+        resolved_session_id = _resolve_session_id(session_id)
+        cleaned_session_dirs = cleanup_expired_session_state(config)
+        contract["session_id"] = resolved_session_id
         contract["preferences"] = _normalize_preferences(preload_preferences(config))
 
         runtime_result = run_runtime(
             request,
             workspace_root=workspace,
             global_config_path=global_config_path,
+            session_id=resolved_session_id,
             user_home=user_home,
         )
         contract["preferences"] = _normalize_preferences(preload_preferences(config))
@@ -63,7 +69,11 @@ def enter_runtime_gate(
             "reason": runtime_result.route.reason,
         }
 
-        store = StateStore(config)
+        store = _store_for_route(
+            config=config,
+            route_name=runtime_result.route.route_name,
+            session_id=resolved_session_id,
+        )
         persisted_handoff = store.get_current_handoff()
         current_run = store.get_current_run()
         # Normalize from the in-memory runtime result when needed, but keep
@@ -95,7 +105,10 @@ def enter_runtime_gate(
             runtime_handoff=runtime_result.handoff,
             current_run=current_run,
             ingress_mode="runtime_gate_enter",
+            session_id=resolved_session_id,
+            cleaned_session_dirs=cleaned_session_dirs,
         )
+        contract["state"] = _build_state_contract(store=store)
 
         if not contract["handoff"]:
             contract.update(
@@ -163,6 +176,7 @@ def _base_contract(workspace_root: Path) -> dict[str, Any]:
         "status": "error",
         "gate_passed": False,
         "workspace_root": str(workspace_root),
+        "session_id": None,
         "preflight": {},
         "preferences": {
             "status": "missing",
@@ -170,6 +184,7 @@ def _base_contract(workspace_root: Path) -> dict[str, Any]:
         },
         "runtime": {},
         "handoff": {},
+        "state": {},
         "trigger_evidence": {},
         "observability": {},
         "allowed_response_mode": ERROR_VISIBLE_RETRY,
@@ -265,16 +280,21 @@ def _build_gate_observability(
     runtime_handoff: Any,
     current_run: Any,
     ingress_mode: str,
+    session_id: str,
+    cleaned_session_dirs: tuple[str, ...],
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "receipt_kind": "runtime_gate",
         "ingress_mode": ingress_mode,
         "written_at": iso_now(),
+        "session_id": session_id,
         "request_excerpt": summarize_request_text(request),
         "request_sha1": stable_request_sha1(request),
         "runtime_route_name": runtime_route,
         "handoff_source_kind": _handoff_source_kind(persisted_handoff=persisted_handoff, runtime_handoff=runtime_handoff),
     }
+    if cleaned_session_dirs:
+        payload["cleaned_session_dirs"] = list(cleaned_session_dirs)
     if current_run is not None:
         payload["current_run"] = {
             "run_id": getattr(current_run, "run_id", ""),
@@ -304,6 +324,37 @@ def _build_gate_observability(
             "required_host_action": getattr(runtime_handoff, "required_host_action", ""),
         }
     return payload
+
+
+def _build_state_contract(*, store: StateStore) -> dict[str, Any]:
+    return {
+        "scope": store.scope,
+        "state_root": store.relative_path(store.root),
+        "current_plan_path": store.relative_path(store.current_plan_path),
+        "current_run_path": store.relative_path(store.current_run_path),
+        "current_handoff_path": store.relative_path(store.current_handoff_path),
+        "current_clarification_path": store.relative_path(store.current_clarification_path),
+        "current_decision_path": store.relative_path(store.current_decision_path),
+        "last_route_path": store.relative_path(store.last_route_path),
+    }
+
+
+def _resolve_session_id(session_id: str | None) -> str:
+    normalized = normalize_session_id(session_id)
+    if normalized:
+        return normalized
+    return f"session-{uuid4().hex[:12]}"
+
+
+def _store_for_route(
+    *,
+    config,
+    route_name: str,
+    session_id: str,
+) -> StateStore:
+    if route_name in {"execution_confirm_pending", "resume_active", "exec_plan", "finalize_active"}:
+        return StateStore(config)
+    return StateStore(config, session_id=session_id)
 
 
 def write_gate_receipt(path: Path, payload: Mapping[str, Any]) -> None:

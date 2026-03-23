@@ -236,6 +236,9 @@ class RunState:
     execution_gate: Optional[ExecutionGate] = None
     request_excerpt: str = ""
     request_sha1: str = ""
+    owner_session_id: str = ""
+    owner_host: str = ""
+    owner_run_id: str = ""
 
     @property
     def is_active(self) -> bool:
@@ -255,6 +258,9 @@ class RunState:
             "execution_gate": self.execution_gate.to_dict() if self.execution_gate else None,
             "request_excerpt": self.request_excerpt,
             "request_sha1": self.request_sha1,
+            "owner_session_id": self.owner_session_id,
+            "owner_host": self.owner_host,
+            "owner_run_id": self.owner_run_id,
         }
 
     @classmethod
@@ -272,6 +278,9 @@ class RunState:
             execution_gate=ExecutionGate.from_dict(data["execution_gate"]) if isinstance(data.get("execution_gate"), Mapping) else None,
             request_excerpt=str(data.get("request_excerpt") or ""),
             request_sha1=str(data.get("request_sha1") or ""),
+            owner_session_id=str(data.get("owner_session_id") or ""),
+            owner_host=str(data.get("owner_host") or ""),
+            owner_run_id=str(data.get("owner_run_id") or ""),
         )
 
 
