@@ -90,3 +90,58 @@ knowledge_sync:
 - 优点: 1 行
 - 扣分: 1 行
 ```
+
+## 文档治理约定
+
+- public README 只保留新用户需要的价值主张、快速开始、精简目录结构与 FAQ。
+- workflow 细节下沉到 `docs/how-sopify-works.md` / `.en.md`，不把维护者操作塞回 README。
+- 维护者操作统一收口到 `CONTRIBUTING.md` / `CONTRIBUTING_CN.md`。
+- `blueprint/README.md` 继续只做索引页，不承载长说明。
+- `plan/` 是活动工作层；`history/` 是显式 finalize 后的归档层；`state/` 是运行态 machine truth。
+
+## KB 职责矩阵
+
+| Path | Layer | Responsibility | Created When | Git Default |
+|-----|------|------|------|------|
+| `.sopify-skills/blueprint/README.md` | `L0 index` | 项目索引与当前状态 | 首次真实项目触发 | tracked |
+| `.sopify-skills/project.md` | `L1 stable` | 可复用技术约定 | 首次 bootstrap | tracked |
+| `.sopify-skills/blueprint/{background,design,tasks}.md` | `L1 stable` | 长期目标、契约、延后事项 | 首次进入 plan 生命周期 | tracked |
+| `.sopify-skills/plan/YYYYMMDD_feature/` | `L2 active` | 当前活动方案包 | 每次正式进入方案流 | ignored |
+| `.sopify-skills/history/YYYY-MM/...` | `L3 archive` | 已收口方案归档 | 显式 `~go finalize` | ignored |
+| `.sopify-skills/state/*.json` | `runtime` | handoff / checkpoint / gate machine truth | runtime 执行期间 | ignored |
+| `.sopify-skills/replay/` | `optional` | 复盘摘要与学习记录 | 命中主动记录策略时 | ignored |
+
+## Checkpoint 契约补充
+
+### Clarification checkpoint
+
+- 只在 planning 路由内生效，用于补齐最小事实锚点。
+- 命中后 runtime 会写入 `current_clarification.json`，并在 handoff 中暴露 `checkpoint_request`。
+- 宿主应优先读取结构化问题列表，等待用户补充后再恢复默认 runtime 入口。
+
+### Decision checkpoint
+
+- 只在 planning 路由内生效，用于处理显式多方案分叉或结构化 tradeoff 候选。
+- 命中后 runtime 会写入 `current_decision.json`，并在 handoff 中暴露推荐项与提交状态。
+- 宿主确认后再恢复默认 runtime 入口，不得在确认前擅自物化正式 plan。
+
+### Develop-first callback
+
+- 当 `required_host_action == continue_host_develop` 时，宿主继续负责代码修改。
+- 若开发中再次出现用户拍板分叉，宿主必须调用 `scripts/develop_checkpoint_runtime.py` 回调 runtime。
+- payload 至少带上 `active_run_stage / current_plan_path / task_refs / changed_files / working_summary / verification_todo`。
+
+### Execution gate 与 execution confirm
+
+- plan 物化后会写入 `execution_gate` machine contract，区分 `plan_generated` 与 `ready_for_execution`。
+- 当 gate 结果为 `ready` 时，runtime 会进入 `execution_confirm_pending`，并通过 `confirm_execute` 等待用户确认。
+- 宿主应优先展示 `execution_summary` 中的计划、风险与缓解，而不是直接跳到 develop。
+
+## 分层试点材料（2026-03）
+
+- promotion gate pilot 的历史工件保留在 `history/2026-03/20260321_go-plan/`。
+- 关键参考包括：
+  - `pilot_sample_matrix.md`
+  - `trigger_matrix.md`
+  - `pilot_review_rubric.md`
+- 这些材料属于长期项目知识，不进入 public README，也不进入 maintainer 快速入口。

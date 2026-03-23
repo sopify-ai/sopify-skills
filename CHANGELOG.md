@@ -6,6 +6,36 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-23.185925] - 2026-03-23
+
+### Docs
+
+- Refined public documentation:
+  - `CONTRIBUTING.md`
+  - `CONTRIBUTING_CN.md`
+  - `README.md`
+  - `README_EN.md`
+  - `docs/how-sopify-works.en.md`
+  - `docs/how-sopify-works.md`
+
+### Scripts
+
+- Adjusted maintenance scripts:
+  - `scripts/check-readme-links.py`
+  - `scripts/release-draft-changelog.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_check_readme_links.py`
+  - `tests/test_release_hooks.py`
+
+### Changed
+
+- Updated project files:
+  - `.sopify-skills/blueprint/README.md`
+  - `.sopify-skills/blueprint/design.md`
+
 ## [2026-03-23.163812] - 2026-03-23
 
 ### Changed

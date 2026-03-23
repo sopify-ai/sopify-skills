@@ -10,6 +10,14 @@ from pathlib import Path
 
 
 UNRELEASED_HEADER = "## [Unreleased]"
+SECTION_DEFINITIONS = (
+    ("Docs", "Refined public documentation"),
+    ("Runtime", "Updated runtime internals"),
+    ("Scripts", "Adjusted maintenance scripts"),
+    ("Skills", "Synced prompt-layer skills"),
+    ("Tests", "Updated automated coverage"),
+    ("Changed", "Updated project files"),
+)
 
 
 def _repo_matches_current_git_env(root: Path) -> bool:
@@ -183,17 +191,31 @@ def dedupe_paths(paths: list[str]) -> list[str]:
 
 
 def render_draft(changed_files: list[str]) -> str:
-    changed_non_tests = [path for path in changed_files if not path.startswith("tests/")]
-    test_files = [path for path in changed_files if path.startswith("tests/")]
+    grouped: dict[str, list[str]] = {title: [] for title, _ in SECTION_DEFINITIONS}
+    for path in changed_files:
+        grouped[classify_path(path)].append(path)
 
-    blocks: list[str] = []
-    if changed_non_tests:
-        blocks.append(render_section("Changed", "Updated release-relevant files", changed_non_tests))
-    if test_files:
-        blocks.append(render_section("Tests", "Updated automated coverage", test_files))
-    if not blocks:
-        blocks.append(render_section("Changed", "Updated release-relevant files", changed_files))
+    blocks = [
+        render_section(title, summary, grouped[title])
+        for title, summary in SECTION_DEFINITIONS
+        if grouped[title]
+    ]
     return "\n\n".join(blocks)
+
+
+def classify_path(path: str) -> str:
+    normalized = path.strip().replace("\\", "/")
+    if normalized.startswith(("README", "CONTRIBUTING", "docs/", "LICENSE")):
+        return "Docs"
+    if normalized.startswith("runtime/"):
+        return "Runtime"
+    if normalized.startswith("scripts/"):
+        return "Scripts"
+    if normalized.startswith(("Codex/", "Claude/")):
+        return "Skills"
+    if normalized.startswith("tests/"):
+        return "Tests"
+    return "Changed"
 
 
 def render_section(title: str, summary: str, paths: list[str]) -> str:

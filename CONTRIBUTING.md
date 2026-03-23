@@ -1,47 +1,114 @@
 # Contributing
 
-Thanks for your interest in contributing!
+Thanks for your interest in contributing to Sopify.
 
 ## How to contribute
 
-- Please open an issue first for non-trivial changes so we can align on scope.
-- Keep changes focused and easy to review (one feature/fix per PR when possible).
-- Prefer updating both `README.md` and `README_EN.md` when user-facing behavior changes.
-- Update `CHANGELOG.md` manually for user-facing/rule behavior changes.
-- Use `Codex/Skills/{CN,EN}` as the prompt-layer source of truth, and `runtime/builtin_skill_packages/*/skill.yaml` as the builtin machine-metadata source of truth. After edits, run `bash scripts/sync-skills.sh`, `bash scripts/check-skills-sync.sh`, and `bash scripts/check-version-consistency.sh`.
-- For skill package changes, follow [docs/skill-authoring.md](./docs/skill-authoring.md) / [docs/skill-authoring.en.md](./docs/skill-authoring.en.md), then run `python3 scripts/generate-builtin-catalog.py`, `python3 scripts/check-skill-eval-gate.py`, and `python3 -m unittest tests.test_runtime -v`.
-- CI runs the same checks plus `git diff --exit-code`; include local results in your PR description if you changed skills/rules.
+- Open an issue first for non-trivial changes so scope and ownership are clear.
+- Keep pull requests focused; one feature or fix per PR is preferred.
+- Update both `README.md` and `README_EN.md` when user-facing behavior changes.
+- Update `CHANGELOG.md` manually when user-visible behavior or maintainer rules change.
 
-## Commit Hook Version Sync
+## Prompt-layer and Skill Authoring
 
-- This repo ships coordinated `pre-commit` + `commit-msg` hooks under `.githooks/`.
-- Enable it once per clone:
-  - `git config core.hooksPath .githooks`
-- After that, every `git commit` checks the staged files and enters version-sync automation when release-relevant paths are touched (runtime/installer/release scripts/skills/readme/changelog).
-- `pre-commit` runs `scripts/release-preflight.sh` first, then `scripts/release-sync.sh`, and re-stages the synced files so they land in the same commit:
-  - Version format: `YYYY-MM-DD.HHMMSS`
-  - Date used for changelog section: `YYYY-MM-DD`
-- When `CHANGELOG.md -> [Unreleased]` is empty, `release-sync` now auto-drafts a minimal note block from staged release-relevant files before bumping the version.
-- If `pre-commit` fails after touching release-managed files, the hook restores those files to the pre-hook snapshot to avoid leaving partially bumped badges / versions in the working tree.
-- `commit-msg` only appends `Release-Sync` / `Release-Version` / `Release-Date` trailers based on the pre-commit state handoff.
-- Version updates happen inside that commit path only after preflight passes; there is no separate manual release-hook workflow.
-- Common env toggles:
-  - `SOPIFY_DISABLE_RELEASE_HOOK=1`: disable hook behavior for one commit
-  - `SOPIFY_SKIP_RELEASE_PREFLIGHT=1`: skip preflight checks (emergency only)
-  - `SOPIFY_AUTO_DRAFT_CHANGELOG=0`: require manual `[Unreleased]` notes instead of auto-drafting
-  - `SOPIFY_RELEASE_HOOK_DRY_RUN=1`: print what would happen without changing files
-  - `SOPIFY_FORCE_RELEASE_SYNC=1`: force release-sync even when staged paths are not release-relevant
+- `Codex/Skills/{CN,EN}` is the prompt-layer source of truth.
+- `Claude/Skills/{CN,EN}` is the mirrored host layer and should be synced, not hand-maintained independently.
+- `runtime/builtin_skill_packages/*/skill.yaml` is the source of truth for builtin machine metadata.
+- For skill package changes, follow the `SKILL.md` files under [Codex/Skills/CN/skills/sopify/](./Codex/Skills/CN/skills/sopify/) / [Codex/Skills/EN/skills/sopify/](./Codex/Skills/EN/skills/sopify/).
 
-## License note (informal)
+Key constraints:
 
-This repository describes a dual-licensing intent:
+- Prefer `supports_routes` for route binding.
+- Validate `skill.yaml` through `runtime/skill_schema.py`.
+- `tools / disallowed_tools / allowed_paths / requires_network` are currently declarative fields unless runtime explicitly enforces them.
+- Regenerate the builtin catalog instead of editing generated metadata manually.
 
-- Code / configs: Apache-2.0 (see `LICENSE`)
-- Documentation (mostly Markdown): CC BY 4.0 (see `LICENSE-docs`)
+## Runtime Bundle and Host Integration
 
-By submitting a contribution, you agree that your contribution can be distributed
-under the license applicable to the files you change.
+Use these commands when you need maintainer-level control over the vendored runtime bundle:
 
-If you believe any attribution or licensing information is missing (for example,
-because some content was adapted from other open-source projects), please open an
-issue or include details in your PR.
+```bash
+# Sync runtime assets into a target workspace
+bash scripts/sync-runtime-assets.sh /path/to/project
+
+# Validate the raw input entry in the target workspace
+python3 /path/to/project/.sopify-runtime/scripts/sopify_runtime.py \
+  --workspace-root /path/to/project "Refactor the database layer"
+
+# Optional: portable runtime checks in the target workspace
+python3 -m unittest /path/to/project/.sopify-runtime/tests/test_runtime.py
+bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
+```
+
+Bundle rules:
+
+- The global payload lives under `~/.codex/sopify/` or `~/.claude/sopify/`.
+- Hosts must read `.sopify-runtime/manifest.json` before falling back to fixed helper paths.
+- The first host hop goes through `.sopify-runtime/scripts/runtime_gate.py enter`.
+- Clarification, decision, and develop checkpoint helpers are internal bridge helpers, not replacement main entries.
+
+## Validation Commands
+
+Run the minimum checks that match your change scope.
+
+Prompt-layer and metadata sync:
+
+```bash
+bash scripts/sync-skills.sh
+bash scripts/check-skills-sync.sh
+bash scripts/check-version-consistency.sh
+python3 scripts/generate-builtin-catalog.py
+python3 scripts/check-skill-eval-gate.py
+python3 -m unittest tests.test_runtime -v
+```
+
+Repo-local runtime validation:
+
+```bash
+python3 scripts/sopify_runtime.py "Refactor the database layer"
+python3 scripts/runtime_gate.py enter --workspace-root . --request "Refactor the database layer"
+python3 scripts/sopify_runtime.py "~go plan Refactor the database layer"
+python3 scripts/sopify_runtime.py "~go finalize"
+python3 scripts/go_plan_runtime.py "Refactor the database layer"
+bash scripts/check-runtime-smoke.sh
+```
+
+Documentation and release validation:
+
+```bash
+python3 scripts/check-readme-links.py
+python3 -m unittest tests/test_release_hooks.py -v
+bash scripts/check-version-consistency.sh
+```
+
+## Release Hook and CHANGELOG
+
+This repository ships coordinated `.githooks/pre-commit` and `commit-msg` automation.
+
+Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Behavior summary:
+
+- `pre-commit` runs `scripts/release-preflight.sh` and then `scripts/release-sync.sh`.
+- Release-managed files are re-staged into the same commit when checks pass.
+- When `CHANGELOG.md -> [Unreleased]` is empty, `release-sync` auto-drafts grouped notes from the current staged files.
+- `commit-msg` only appends `Release-Sync`, `Release-Version`, and `Release-Date` trailers from the pre-commit handoff.
+
+Common environment toggles:
+
+- `SOPIFY_DISABLE_RELEASE_HOOK=1`
+- `SOPIFY_SKIP_RELEASE_PREFLIGHT=1`
+- `SOPIFY_AUTO_DRAFT_CHANGELOG=0`
+- `SOPIFY_RELEASE_HOOK_DRY_RUN=1`
+- `SOPIFY_FORCE_RELEASE_SYNC=1`
+
+## License Note
+
+By contributing, you agree that your changes may be distributed under the license that applies to the files you modify:
+
+- Code and config: Apache 2.0
+- Documentation: CC BY 4.0

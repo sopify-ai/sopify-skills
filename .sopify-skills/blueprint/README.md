@@ -13,8 +13,8 @@
 ## 当前焦点
 
 <!-- sopify:auto:focus:start -->
-- 当前活动 plan：暂无。
-- history 归档：已可用；最近归档为 `../history/2026-03/20260323_runtime-gate-diagnostics`。
+- 当前活动 plan：以 runtime / registry 当前状态为准。
+- history 归档：已可用；最近归档为 `../history/2026-03/20260323_readme-about-changelog`。
 <!-- sopify:auto:focus:end -->
 
 ## 深入阅读入口
@@ -26,5 +26,5 @@
 - [蓝图任务](./tasks.md)
 - [Skill 标准对齐蓝图](./skill-standards-refactor.md)
 - [变更历史](../history/index.md)
-- 最近归档：`../history/2026-03/20260323_runtime-gate-diagnostics`
+- 最近归档：`../history/2026-03/20260323_readme-about-changelog`
 <!-- sopify:auto:read-next:end -->

@@ -99,6 +99,24 @@ def _minimal_agents(version: str, *, claude: bool, english: bool) -> str:
     )
 
 
+def _unreleased_body(changelog_text: str) -> str:
+    start = changelog_text.index("## [Unreleased]") + len("## [Unreleased]")
+    end = changelog_text.find("\n## [", start)
+    if end < 0:
+        end = len(changelog_text)
+    return changelog_text[start:end]
+
+
+def _release_body(changelog_text: str, version: str) -> str:
+    header = f"## [{version}] - "
+    start = changelog_text.index(header)
+    body_start = changelog_text.find("\n", start) + 1
+    end = changelog_text.find("\n## [", body_start)
+    if end < 0:
+        end = len(changelog_text)
+    return changelog_text[body_start:end]
+
+
 def _init_release_hook_fixture(root: Path, *, missing_claude_targets: bool = False) -> None:
     for relative in (
         "scripts/release-sync.sh",
@@ -169,11 +187,16 @@ class ReleaseHookTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, msg=completed.stderr)
             text = changelog.read_text(encoding="utf-8")
-            self.assertIn("### Changed", text)
-            self.assertIn("`runtime/gate.py`", text)
-            self.assertIn("`scripts/release-sync.sh`", text)
-            self.assertIn("### Tests", text)
-            self.assertIn("`tests/test_runtime_gate.py`", text)
+            unreleased = _unreleased_body(text)
+            self.assertIn("### Runtime", unreleased)
+            self.assertIn("- Updated runtime internals:", unreleased)
+            self.assertIn("`runtime/gate.py`", unreleased)
+            self.assertIn("### Scripts", unreleased)
+            self.assertIn("- Adjusted maintenance scripts:", unreleased)
+            self.assertIn("`scripts/release-sync.sh`", unreleased)
+            self.assertIn("### Tests", unreleased)
+            self.assertIn("- Updated automated coverage:", unreleased)
+            self.assertIn("`tests/test_runtime_gate.py`", unreleased)
 
     def test_release_sync_auto_drafts_unreleased_before_version_bump(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -191,12 +214,48 @@ class ReleaseHookTests(unittest.TestCase):
 
             self.assertEqual(completed.returncode, 0, msg=completed.stderr)
             changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+            release_body = _release_body(changelog, "2026-03-21.010203")
             self.assertIn("## [2026-03-21.010203] - 2026-03-21", changelog)
-            self.assertIn("`runtime/gate.py`", changelog)
-            self.assertIn("`tests/test_runtime_gate.py`", changelog)
+            self.assertIn("### Runtime", release_body)
+            self.assertIn("`runtime/gate.py`", release_body)
+            self.assertIn("### Tests", release_body)
+            self.assertIn("`tests/test_runtime_gate.py`", release_body)
+            self.assertNotIn("### Changed", release_body)
             self.assertIn("badge/version-2026--03--21.010203-orange.svg", (root / "README.md").read_text(encoding="utf-8"))
             self.assertIn("<!-- SOPIFY_VERSION: 2026-03-21.010203 -->", (root / "Codex/Skills/CN/AGENTS.md").read_text(encoding="utf-8"))
             self.assertIn("<!-- SOPIFY_VERSION: 2026-03-21.010203 -->", (root / "Claude/Skills/CN/CLAUDE.md").read_text(encoding="utf-8"))
+
+    def test_release_draft_only_renders_non_empty_sections(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            changelog = root / "CHANGELOG.md"
+            _write(changelog, _minimal_changelog("2026-03-20.183348", "2026-03-20"))
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "release-draft-changelog.py"),
+                    "--root",
+                    str(root),
+                    "--file",
+                    "README.md",
+                    "--file",
+                    "tests/test_runtime_gate.py",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, msg=completed.stderr)
+            text = changelog.read_text(encoding="utf-8")
+            unreleased = _unreleased_body(text)
+            self.assertIn("### Docs", unreleased)
+            self.assertIn("### Tests", unreleased)
+            self.assertNotIn("### Runtime", unreleased)
+            self.assertNotIn("### Scripts", unreleased)
+            self.assertNotIn("### Skills", unreleased)
+            self.assertNotIn("### Changed", unreleased)
 
     def test_pre_commit_restores_release_managed_files_when_release_sync_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
