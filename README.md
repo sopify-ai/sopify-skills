@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--24.174944-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--24.181429-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING_CN.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明) · [贡献者](./CONTRIBUTORS.md)
@@ -17,34 +17,25 @@
 
 ## 为什么选择 Sopify (Sop AI) Skills？
 
-随着仓库增长，AI 辅助开发会遇到一个隐性问题：决策依据散落在对话历史里，新的 session 只能重新理解上下文，用户认知、AI 理解和代码现状会逐渐偏离。
+随着仓库增长，AI 辅助开发会遇到一个隐性问题：决策依据散落在对话里，每次新 session 都要重新理解上下文，用户认知、AI 理解和代码现状会逐渐偏离。
 
-Sopify 用两层机制降低这种偏移：
+Sopify 用机器可读协议把关键节点变成可见流程：缺事实时停下来补事实，需要拍板时等待你确认，中断后从当前状态恢复，而不是让 AI 自行拍板。基础过程记录会自动产生，长期复利则取决于是否持续 `~go finalize` 和维护知识资产。
 
-**机器契约，而不是口头约定**
-runtime gate 确保 AI 从验证过的当前状态出发；checkpoint 在关键节点等待人类确认，不自行拍板；handoff 把每一步决策以机器可读格式落盘，让执行依据可验证、可恢复、可复用。
+结果是，工作可以稳定推进、可复盘、可延续，下次从当前状态继续，而不是重新发现上下文。自适应路由只是降低这套机制的使用成本：简单任务保持轻量，复杂任务再进入完整流程。
 
-**可积累的项目资产，而不是一次性对话**
-每次执行都会把关键结果沉淀到 `plan -> history -> blueprint`。复盘时有结构化依据，下个 session 可以从当前状态继续，而不是重新发现“当初为什么这么做”。
+### 你会实际感受到什么
 
-自适应路由让这套机制不至于变成负担：简单任务直接执行，复杂任务才进入完整的契约流程。
+- 关键节点不会由 AI 自行拍板，缺事实或需要选路时会停下来等你确认
+- 中断后可以从上次停点恢复，不必重新把背景再讲一遍
+- 方案、历史和蓝图会沉淀为项目资产，而不只是一次性聊天记录
+- 简单任务保持轻量，复杂任务才进入完整流程
 
-| 任务类型 | 传统方式 | Sopify 路径 |
-|---------|---------|-------------|
-| 简单修改（≤2 文件） | 完整三阶段 | 直接执行 |
-| 中等任务（3-5 文件） | 完整三阶段 | light 方案 + 执行 |
-| 复杂任务（>5 文件 / 架构变更） | 完整三阶段 | 完整三阶段 |
+### 什么时候最有价值
 
-### 核心特性
+- 长期维护的复杂仓库，需要跨 session 连续性和可审计性
+- 愿意维护 plan / blueprint，并在阶段完成后用 `~go finalize` 做收口
 
-- 一次安装，进入项目后按需自动准备 `.sopify-runtime/`
-- 配置驱动的复杂度路由，减少简单任务的流程负担
-- manifest-first 机器契约，宿主按 handoff 和 gate 决定下一步
-- checkpoint 可恢复，clarification / decision / execution confirm 口径统一
-- 支持 Codex CLI 与 Claude Code 双宿主
-- 内建多模型对比与 workflow-learning 扩展能力，可按需开启
-
-**设计来源：** Sopify 借鉴 harness engineering 思路，用结构化知识替代自由 prompt、用机器契约替代隐式约定、用可观测 checkpoint 替代盲执行。详见 [工作流说明](./docs/how-sopify-works.md)。
+如果只做一次性小改动、不关心后续沉淀，收益会明显降低。
 
 ## 快速开始
 
@@ -85,6 +76,14 @@ bash scripts/install-sopify.sh --target claude:en-US --workspace /path/to/projec
 - 不传 `--workspace` 时，后续首次在项目仓库触发 Sopify 会自动 bootstrap
 - 可用 `python3 scripts/sopify_status.py --format text` 查看支持矩阵与当前 workspace 状态
 - 可用 `python3 scripts/sopify_doctor.py --format text` 查看 payload / bundle / smoke 诊断结果
+
+### 根据任务规模选入口
+
+| 任务类型 | Sopify 处理方式 |
+|---------|----------------|
+| 简单修改（≤2 文件） | 直接执行 |
+| 中等任务（3-5 文件） | 轻量方案 + 执行 |
+| 复杂任务（>5 文件 / 架构变更） | 完整三阶段 |
 
 ### 首次使用
 

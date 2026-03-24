@@ -2,11 +2,11 @@
 
 <div align="center">
 
-**A recoverable, reviewable, and durable AI coding workflow for long-lived repositories**
+**A recoverable, reviewable, cross-session AI coding workflow for long-lived repos**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--03--24.174944-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--24.181429-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration) · [Contributors](./CONTRIBUTORS.md)
@@ -19,32 +19,23 @@
 
 As repositories grow, AI-assisted development runs into a hidden problem: decision context stays trapped in chat history, each new session re-derives the project state, and the user's mental model, the AI's understanding, and the codebase start to drift apart.
 
-Sopify reduces that drift in two layers:
+Sopify uses machine-readable protocols to make critical steps visible: when facts are missing, it stops and asks for them; when a branch needs a decision, it waits for confirmation; when work is interrupted, it resumes from current state instead of improvising. The basic process record is generated automatically, but the long-term compounding value still depends on consistently running `~go finalize` and maintaining project knowledge.
 
-**Machine contracts instead of verbal conventions**
-runtime gate starts the AI from a verified current state; checkpoints force human confirmation at critical branches; handoff records each decision in a machine-readable form so execution can be audited, resumed, and reused.
+The result is a workflow that can keep moving, be reviewed later, and continue across sessions from current state instead of rediscovering context. Adaptive routing only lowers the cost of using this system: small tasks stay light, and complex work enters the fuller process only when needed.
 
-**Durable project assets instead of disposable chat history**
-Important results are continuously written into `plan -> history -> blueprint`. That gives retrospectives a structured evidence trail and lets the next session continue from current state instead of rediscovering why earlier decisions were made.
+### What You'll Actually Notice
 
-Adaptive routing keeps this from becoming heavy: simple tasks execute directly, while complex work enters the full contract flow only when needed.
+- The AI does not silently make key decisions; it pauses when facts are missing or a path needs your confirmation.
+- After an interruption, work resumes from the last stopping point instead of starting over.
+- Plans, history, and blueprint become reusable project assets instead of disposable chat logs.
+- Small tasks stay lightweight, while complex work enters the fuller process only when needed.
 
-| Task Type | Traditional | Sopify Path |
-|-----------|------------|-------------|
-| Simple change (≤2 files) | Full three-phase | Direct execution |
-| Medium task (3-5 files) | Full three-phase | Light plan + execution |
-| Complex work (>5 files / architecture change) | Full three-phase | Full three-phase workflow |
+### When It's Most Valuable
 
-### Key Features
+- Long-lived, complex repositories that need cross-session continuity and auditable execution
+- Workflows willing to maintain plan / blueprint artifacts and close out milestones with `~go finalize`
 
-- Install once, then bootstrap `.sopify-runtime/` on demand inside project workspaces
-- Config-driven complexity routing to reduce overhead on small tasks
-- Manifest-first machine contracts so hosts follow handoff and gate state
-- Recoverable checkpoints for clarification, decision, and execution confirmation
-- Dual-host support for Codex CLI and Claude Code
-- Built-in multi-model comparison and workflow-learning extensions, enabled on demand
-
-**Design rationale:** Sopify applies harness engineering thinking: structured knowledge over free-form prompts, machine contracts over implicit conventions, and observable checkpoints over blind execution. See [How Sopify Works](./docs/how-sopify-works.en.md).
+If you only want one-off changes and do not care about future reuse, the payoff drops quickly.
 
 ## Quick Start
 
@@ -85,6 +76,14 @@ Installer behavior:
 - Bootstraps `.sopify-runtime/` on first trigger when `--workspace` is omitted
 - Use `python3 scripts/sopify_status.py --format text` to inspect the support matrix and current workspace state
 - Use `python3 scripts/sopify_doctor.py --format text` to inspect payload, bundle, and smoke diagnostics
+
+### Choose an Entry by Task Size
+
+| Task Type | Sopify Path |
+|-----------|-------------|
+| Simple change (≤2 files) | Direct execution |
+| Medium task (3-5 files) | Light plan + execution |
+| Complex work (>5 files / architecture change) | Full three-phase workflow |
 
 ### First Use
 
