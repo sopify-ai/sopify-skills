@@ -11,19 +11,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from installer.hosts import get_host_adapter
+from installer.hosts import get_host_adapter, iter_installable_hosts
 from installer.hosts.base import install_host_assets
-from installer.models import BootstrapResult, InstallError, InstallResult, parse_install_target
+from installer.models import BootstrapResult, InstallError, InstallResult, LANGUAGE_DIRECTORY_MAP, parse_install_target
 from installer.payload import install_global_payload, run_workspace_bootstrap
 from installer.validate import run_bundle_smoke_check, validate_bundle_install, validate_host_install, validate_payload_install
 
 
 def build_parser() -> argparse.ArgumentParser:
+    supported_targets = ", ".join(
+        f"{capability.host_id}:{language}"
+        for capability in iter_installable_hosts()
+        for language in LANGUAGE_DIRECTORY_MAP
+    )
     parser = argparse.ArgumentParser(description="Install Sopify into a target workspace and host environment.")
     parser.add_argument(
         "--target",
         required=True,
-        help="Install target in <host:lang> format. Supported: codex:zh-CN, codex:en-US, claude:zh-CN, claude:en-US",
+        help=f"Install target in <host:lang> format. Supported: {supported_targets}",
     )
     parser.add_argument(
         "--workspace",

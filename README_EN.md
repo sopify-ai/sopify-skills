@@ -2,11 +2,11 @@
 
 <div align="center">
 
-**Config-driven adaptive AI coding workflow framework**
+**A recoverable, reviewable, and durable AI coding workflow for long-lived repositories**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--03--24.124504-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--24.170253-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration)
@@ -17,11 +17,17 @@
 
 ## Why Sopify (Sop AI) Skills?
 
-Traditional AI coding assistants either force every task through the same heavyweight process or return one-shot answers with no recoverable execution loop or durable accumulation. Sopify turns AI coding into a config-driven workflow: simple tasks execute directly, complex tasks become structured plan packages, key checkpoints pause for confirmation, and useful knowledge is continuously accumulated into plans, summaries, and long-lived blueprints.
+As repositories grow, AI-assisted development runs into a hidden problem: decision context stays trapped in chat history, each new session re-derives the project state, and the user's mental model, the AI's understanding, and the codebase start to drift apart.
 
-- `Adaptive execution`: simple tasks run directly, while complex work gets planning when needed
-- `Recoverable progress`: pause for confirmation at key checkpoints and resume from where work stopped
-- `Durable accumulation`: plans, summaries, blueprints, and history compound over time
+Sopify reduces that drift in two layers:
+
+**Machine contracts instead of verbal conventions**
+runtime gate starts the AI from a verified current state; checkpoints force human confirmation at critical branches; handoff records each decision in a machine-readable form so execution can be audited, resumed, and reused.
+
+**Durable project assets instead of disposable chat history**
+Important results are continuously written into `plan -> history -> blueprint`. That gives retrospectives a structured evidence trail and lets the next session continue from current state instead of rediscovering why earlier decisions were made.
+
+Adaptive routing keeps this from becoming heavy: simple tasks execute directly, while complex work enters the full contract flow only when needed.
 
 | Task Type | Traditional | Sopify Path |
 |-----------|------------|-------------|
@@ -59,11 +65,26 @@ Supported `target` values:
 - `claude:zh-CN`
 - `claude:en-US`
 
+Current supported host matrix:
+
+| Host | Support Level | Validation Coverage | Notes |
+|------|---------------|---------------------|-------|
+| `codex` | Fully supported | Host install flow, workspace bootstrap, and runtime package smoke are verified | Suitable for daily use |
+| `claude` | Fully supported | Host install flow, workspace bootstrap, and runtime package smoke are verified | Suitable for daily use |
+
+Notes:
+
+- Only `codex / claude` are formally supported in the current release
+- README only lists formally supported hosts; use `sopify status` / `sopify doctor` for detailed capability claims and live diagnostics
+- `Support Level` expresses product commitment, while `Validation Coverage` describes what has already been validated
+
 Installer behavior:
 
 - Installs the selected host prompt layer and the Sopify payload
 - Prewarms `.sopify-runtime/` when `--workspace` is provided
 - Bootstraps `.sopify-runtime/` on first trigger when `--workspace` is omitted
+- Use `python3 scripts/sopify_status.py --format text` to inspect the support matrix and current workspace state
+- Use `python3 scripts/sopify_doctor.py --format text` to inspect payload, bundle, and smoke diagnostics
 
 ### First Use
 

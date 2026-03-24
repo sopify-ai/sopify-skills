@@ -2,11 +2,11 @@
 
 <div align="center">
 
-**配置驱动的自适应 AI 编程工作流框架**
+**面向长期项目的可恢复、可复盘、可沉淀 AI 编程工作流**
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--24.124504-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--24.170253-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING_CN.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明)
@@ -17,11 +17,17 @@
 
 ## 为什么选择 Sopify (Sop AI) Skills？
 
-传统 AI 编程助手要么对所有任务套同一套重流程，要么只给一次性回答，缺少可恢复、可积累的执行闭环。Sopify 把 AI 编程升级为配置驱动的工作流：简单任务直接执行，复杂任务生成结构化方案包，在关键节点暂停确认，并把过程知识持续沉淀为方案、总结和长期蓝图。
+随着仓库增长，AI 辅助开发会遇到一个隐性问题：决策依据散落在对话历史里，新的 session 只能重新理解上下文，用户认知、AI 理解和代码现状会逐渐偏离。
 
-- `自适应执行`：简单任务直接做，复杂任务再规划
-- `可恢复推进`：关键节点暂停确认，中断后可从断点继续
-- `持续沉淀`：plan、summary、blueprint、history 逐步累积
+Sopify 用两层机制降低这种偏移：
+
+**机器契约，而不是口头约定**
+runtime gate 确保 AI 从验证过的当前状态出发；checkpoint 在关键节点等待人类确认，不自行拍板；handoff 把每一步决策以机器可读格式落盘，让执行依据可验证、可恢复、可复用。
+
+**可积累的项目资产，而不是一次性对话**
+每次执行都会把关键结果沉淀到 `plan -> history -> blueprint`。复盘时有结构化依据，下个 session 可以从当前状态继续，而不是重新发现“当初为什么这么做”。
+
+自适应路由让这套机制不至于变成负担：简单任务直接执行，复杂任务才进入完整的契约流程。
 
 | 任务类型 | 传统方式 | Sopify 路径 |
 |---------|---------|-------------|
@@ -59,11 +65,26 @@ bash scripts/install-sopify.sh --target claude:en-US --workspace /path/to/projec
 - `claude:zh-CN`
 - `claude:en-US`
 
+当前正式支持矩阵：
+
+| 宿主 | 支持级别 | 验证范围 | 说明 |
+|------|----------|----------|------|
+| `codex` | 正式支持 | 已验证宿主安装链路、workspace bootstrap，且运行时包已通过 smoke 验证 | 适合日常使用 |
+| `claude` | 正式支持 | 已验证宿主安装链路、workspace bootstrap，且运行时包已通过 smoke 验证 | 适合日常使用 |
+
+说明：
+
+- 当前正式支持只有 `codex / claude`
+- README 只展示当前正式支持宿主；更细的 capability claim 与现场诊断请看 `sopify status` / `sopify doctor`
+- “支持级别”表示产品承诺层级；“验证范围”表示当前已经验证到哪一层
+
 安装后行为：
 
 - installer 会安装宿主提示层，并在宿主根目录安装 Sopify payload
 - 传入 `--workspace` 时，会额外预热目标仓库的 `.sopify-runtime/`
 - 不传 `--workspace` 时，后续首次在项目仓库触发 Sopify 会自动 bootstrap
+- 可用 `python3 scripts/sopify_status.py --format text` 查看支持矩阵与当前 workspace 状态
+- 可用 `python3 scripts/sopify_doctor.py --format text` 查看 payload / bundle / smoke 诊断结果
 
 ### 首次使用
 

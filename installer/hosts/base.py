@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import shutil
 
-from installer.models import InstallError, InstallPhaseResult
+from installer.models import HostCapability, InstallError, InstallPhaseResult
 
 _IGNORE_PATTERNS = shutil.ignore_patterns(".DS_Store", "Thumbs.db", "__pycache__")
 _SOPIFY_VERSION_RE = re.compile(r"^<!--\s*SOPIFY_VERSION:\s*(?P<version>.+?)\s*-->$", re.MULTILINE)
@@ -46,6 +46,20 @@ class HostAdapter:
             payload_root / "bundle" / "manifest.json",
             payload_root / "helpers" / "bootstrap_workspace.py",
         )
+
+
+@dataclass(frozen=True)
+class HostRegistration:
+    """Registry entry combining layout adapter and product capability metadata."""
+
+    adapter: HostAdapter
+    capability: HostCapability
+
+    def __post_init__(self) -> None:
+        if self.adapter.host_name != self.capability.host_id:
+            raise ValueError(
+                f"Host registration mismatch: adapter={self.adapter.host_name}, capability={self.capability.host_id}"
+            )
 
 
 def install_host_assets(

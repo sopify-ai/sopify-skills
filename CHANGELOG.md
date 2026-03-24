@@ -6,6 +6,36 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-24.170253] - 2026-03-24
+
+### Docs
+
+- Refined public documentation:
+  - `README.md`
+  - `README_EN.md`
+
+### Scripts
+
+- Adjusted maintenance scripts:
+  - `scripts/install_sopify.py`
+  - `scripts/sopify_doctor.py`
+  - `scripts/sopify_status.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_installer_status_doctor.py`
+
+### Changed
+
+- Updated project files:
+  - `installer/hosts/__init__.py`
+  - `installer/hosts/base.py`
+  - `installer/hosts/claude.py`
+  - `installer/hosts/codex.py`
+  - `installer/inspection.py`
+  - `installer/models.py`
+
 ## [2026-03-24.124504] - 2026-03-24
 
 ### Docs
