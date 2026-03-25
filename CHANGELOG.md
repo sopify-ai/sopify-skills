@@ -1,10 +1,36 @@
 # Changelog
 
-All notable changes to Sopify (Sop AI) Skills are documented in this file.
+All notable changes to Sopify are documented in this file.
 
 This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
+
+## [2026-03-25.100507] - 2026-03-25
+
+### Docs
+
+- Refined public documentation:
+  - `README.md`
+  - `README_EN.md`
+
+### Scripts
+
+- Adjusted maintenance scripts:
+  - `scripts/check-readme-links.py`
+
+### Skills
+
+- Synced prompt-layer skills:
+  - `Claude/Skills/CN/CLAUDE.md`
+  - `Claude/Skills/EN/CLAUDE.md`
+  - `Codex/Skills/CN/AGENTS.md`
+  - `Codex/Skills/EN/AGENTS.md`
+
+### Changed
+
+- Updated project files:
+  - `CHANGELOG.md`
 
 ## [2026-03-24.212205] - 2026-03-24
 

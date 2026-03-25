@@ -1,4 +1,6 @@
-# Sopify (Sop AI) Skills
+# Sopify
+
+> Currently delivered through Codex / Claude Skills
 
 <div align="center">
 
@@ -6,7 +8,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--03--24.212205-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--25.100507-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration) · [Contributors](./CONTRIBUTORS.md)
@@ -15,7 +17,7 @@
 
 ---
 
-## Why Sopify (Sop AI) Skills?
+## Why Sopify?
 
 As repositories grow, AI-assisted development runs into a hidden problem: decision context stays trapped in chat history, each new session re-derives the project state, and the user's mental model, the AI's understanding, and the codebase start to drift apart.
 
@@ -235,7 +237,7 @@ Additional notes:
 ## Directory Structure
 
 ```text
-sopify-skills/
+sopify/
 ├── docs/                  # workflow documentation
 ├── .sopify-skills/        # project knowledge base
 │   ├── blueprint/         # long-lived blueprint

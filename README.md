@@ -1,4 +1,6 @@
-# Sopify (Sop AI) Skills
+# Sopify
+
+> 当前通过 Codex / Claude Skills 交付
 
 <div align="center">
 
@@ -6,7 +8,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--24.212205-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--25.100507-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING_CN.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明) · [贡献者](./CONTRIBUTORS.md)
@@ -15,7 +17,7 @@
 
 ---
 
-## 为什么选择 Sopify (Sop AI) Skills？
+## 为什么选择 Sopify？
 
 随着仓库增长，AI 辅助开发会遇到一个隐性问题：决策依据散落在对话里，每次新 session 都要重新理解上下文，用户认知、AI 理解和代码现状会逐渐偏离。
 
@@ -235,7 +237,7 @@ export DASHSCOPE_API_KEY="your_qwen_key"
 ## 目录结构
 
 ```text
-sopify-skills/
+sopify/
 ├── docs/                  # 工作流说明文档
 ├── .sopify-skills/        # 项目知识库
 │   ├── blueprint/         # 长期蓝图
