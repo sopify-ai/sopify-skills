@@ -6,7 +6,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![Version](https://img.shields.io/badge/version-2026--03--25.101956-orange.svg)](#version-history)
+[![Version](https://img.shields.io/badge/version-2026--03--25.104035-orange.svg)](#version-history)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [Quick Start](#quick-start) · [Configuration](#configuration) · [Contributors](./CONTRIBUTORS.md)
@@ -21,14 +21,12 @@ As repositories grow, AI-assisted development runs into a hidden problem: decisi
 
 Sopify uses machine-readable protocols to make critical steps visible: when facts are missing, it stops and asks for them; when a branch needs a decision, it waits for confirmation; when work is interrupted, it resumes from current state instead of improvising. The basic process record is generated automatically, but the long-term compounding value still depends on consistently closing out work and maintaining project knowledge.
 
-The result is a workflow that can keep moving, be reviewed later, and continue across sessions from current state instead of rediscovering context. Adaptive routing only lowers the cost of using this system: small tasks stay light, and complex work enters the fuller process only when needed.
-
 ### What You'll Actually Notice
 
 - The AI does not silently make key decisions; it pauses when facts are missing or a path needs your confirmation.
 - After an interruption, work resumes from the last stopping point instead of starting over.
 - Plans, history, and blueprint become reusable project assets instead of disposable chat logs.
-- Small tasks stay lightweight, while complex work enters the fuller process only when needed.
+- Simple changes are not slowed down by the full process; complex work adds the necessary structure when needed.
 
 ### What Kinds of Projects Benefit Most
 

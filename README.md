@@ -6,7 +6,7 @@
 
 [![许可证](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![文档](https://img.shields.io/badge/docs-CC%20BY%204.0-green.svg)](./LICENSE-docs)
-[![版本](https://img.shields.io/badge/version-2026--03--25.101956-orange.svg)](#版本历史)
+[![版本](https://img.shields.io/badge/version-2026--03--25.104035-orange.svg)](#版本历史)
 [![欢迎PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING_CN.md)
 
 [English](./README_EN.md) · [简体中文](./README.md) · [快速开始](#快速开始) · [配置说明](#配置说明) · [贡献者](./CONTRIBUTORS.md)
@@ -21,14 +21,12 @@
 
 Sopify 用机器可读协议把关键节点变成可见流程：缺事实时停下来补事实，需要拍板时等待你确认，中断后从当前状态恢复，而不是让 AI 自行拍板。基础过程记录会自动产生，长期复利则取决于是否持续做阶段收口和维护知识资产。
 
-结果是，工作可以稳定推进、可复盘、可延续，下次从当前状态继续，而不是重新发现上下文。自适应路由只是降低这套机制的使用成本：简单任务保持轻量，复杂任务再进入完整流程。
-
 ### 你会实际感受到什么
 
 - 关键节点不会由 AI 自行拍板，缺事实或需要选路时会停下来等你确认
 - 中断后可以从上次停点恢复，不必重新把背景再讲一遍
 - 方案、历史和蓝图会沉淀为项目资产，而不只是一次性聊天记录
-- 简单任务保持轻量，复杂任务才进入完整流程
+- 简单改动不会被完整流程拖慢，复杂任务再补上必要管理
 
 ### 在哪类项目里最有价值
 
