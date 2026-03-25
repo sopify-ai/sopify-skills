@@ -6,6 +6,20 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-25.142231] - 2026-03-25
+
+### Docs
+
+- Refined public documentation:
+  - `README.md`
+  - `README_EN.md`
+
+### Changed
+
+- Updated project files:
+  - `assets/logo.png`
+  - `assets/logo.svg`
+
 ## [2026-03-25.131617] - 2026-03-25
 
 ### Docs
