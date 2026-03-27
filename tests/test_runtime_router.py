@@ -65,6 +65,21 @@ class RouterTests(unittest.TestCase):
                 DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
             )
 
+    def test_negated_new_plan_phrase_does_not_force_immediate_materialization(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("~go 不要新建新的 plan 包，直接在当前 plan 上细化 tasks", skills=skills)
+
+            self.assertEqual(route.route_name, "workflow")
+            self.assertEqual(route.plan_package_policy, "confirm")
+            self.assertFalse(route.should_create_plan)
+
     def test_plan_meta_review_for_protected_plan_assets_prefers_consult(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
@@ -131,6 +146,49 @@ class RouterTests(unittest.TestCase):
 
             self.assertEqual(route.route_name, "workflow")
             self.assertNotIn("meta-debug", route.reason)
+
+    def test_explain_only_override_prefers_consult_before_runtime_first_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("解释 runtime gate 为什么这么判，不要改", skills=skills)
+
+            self.assertEqual(route.route_name, "consult")
+            self.assertEqual(route.artifacts.get("consult_mode"), "explain_only_override")
+            self.assertEqual(route.artifacts.get("consult_override_reason_code"), "consult_explain_only_override")
+
+    def test_explain_only_override_does_not_hijack_explicit_change_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("解释原因并修复 router 的这个误判", skills=skills)
+
+            self.assertNotEqual(route.route_name, "consult")
+            self.assertNotEqual(route.artifacts.get("consult_override_reason_code"), "consult_explain_only_override")
+
+    def test_explain_only_override_does_not_override_explicit_workflow_command(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            router = Router(config, state_store=store)
+            skills = SkillRegistry(config, user_home=workspace / "home").discover()
+
+            route = router.classify("~go 解释 runtime gate 为什么这么判，不要改", skills=skills)
+
+            self.assertEqual(route.route_name, "workflow")
+            self.assertEqual(route.command, "~go")
 
     def test_pending_plan_proposal_blocks_compare_and_finalize_as_inspect(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

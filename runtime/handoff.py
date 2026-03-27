@@ -235,6 +235,12 @@ def _collect_handoff_artifacts(
     direct_edit_guard_trigger = str(decision.artifacts.get("direct_edit_guard_trigger") or "").strip()
     if direct_edit_guard_trigger:
         artifacts["direct_edit_guard_trigger"] = direct_edit_guard_trigger
+    consult_mode = str(decision.artifacts.get("consult_mode") or "").strip()
+    if consult_mode:
+        artifacts["consult_mode"] = consult_mode
+    consult_override_reason_code = str(decision.artifacts.get("consult_override_reason_code") or "").strip()
+    if consult_override_reason_code:
+        artifacts["consult_override_reason_code"] = consult_override_reason_code
     execution_summary_payload = None
     if current_run is not None:
         artifacts["run_stage"] = current_run.stage

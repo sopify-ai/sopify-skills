@@ -6,6 +6,26 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-27.105943] - 2026-03-27
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/engine.py`
+  - `runtime/gate.py`
+  - `runtime/handoff.py`
+  - `runtime/plan_scaffold.py`
+  - `runtime/router.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_runtime_engine.py`
+  - `tests/test_runtime_gate.py`
+  - `tests/test_runtime_plan_reuse.py`
+  - `tests/test_runtime_plan_scaffold.py`
+  - `tests/test_runtime_router.py`
+
 ## [2026-03-26.175647] - 2026-03-26
 
 ### Runtime

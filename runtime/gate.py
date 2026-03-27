@@ -212,6 +212,7 @@ def _normalize_handoff(handoff: Any) -> dict[str, Any]:
     required_host_action = str(getattr(handoff, "required_host_action", "") or "").strip()
     direct_edit_guard_kind = str(artifacts.get("direct_edit_guard_kind") or "").strip()
     direct_edit_guard_trigger = str(artifacts.get("direct_edit_guard_trigger") or "").strip()
+    consult_override_reason_code = str(artifacts.get("consult_override_reason_code") or "").strip()
     if not pending_fail_closed and required_host_action in CHECKPOINT_ONLY_ACTIONS:
         pending_fail_closed = True
     payload = {
@@ -227,6 +228,9 @@ def _normalize_handoff(handoff: Any) -> dict[str, Any]:
         trigger_evidence["direct_edit_guard_kind"] = direct_edit_guard_kind
     if direct_edit_guard_trigger:
         trigger_evidence["direct_edit_guard_trigger"] = direct_edit_guard_trigger
+    if consult_override_reason_code:
+        payload["consult_override_reason_code"] = consult_override_reason_code
+        trigger_evidence["consult_override_reason_code"] = consult_override_reason_code
     if trigger_evidence:
         payload["_trigger_evidence"] = trigger_evidence
     return payload

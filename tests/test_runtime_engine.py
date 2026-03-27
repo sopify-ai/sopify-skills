@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from tests.runtime_test_support import *
 from runtime.engine import _advance_planning_route
 
@@ -149,6 +151,131 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertEqual(updated.proposed_path, original.proposed_path)
             self.assertIn("修订意见", updated.request_text)
             self.assertIn("把风险再展开一点", updated.request_text)
+
+    def test_explain_only_request_routes_to_consult_without_creating_plan_proposal(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = run_runtime(
+                "你之前说：这次又被误路由成 proposal 了。说下原因，不要改。",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "consult")
+            self.assertIsNone(result.plan_artifact)
+            self.assertIsNone(result.recovered_context.current_plan_proposal)
+            self.assertFalse((workspace / ".sopify-skills" / "state" / "current_plan_proposal.json").exists())
+            self.assertEqual(result.handoff.required_host_action, "continue_host_consult")
+            self.assertEqual(result.handoff.artifacts.get("consult_mode"), "explain_only_override")
+            self.assertEqual(result.handoff.artifacts.get("consult_override_reason_code"), "consult_explain_only_override")
+
+    def test_engine_proposal_fuse_blocks_explain_only_route_even_when_router_missed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+
+            routed, plan_artifact, notes, _ = _advance_planning_route(
+                RouteDecision(
+                    route_name="light_iterate",
+                    request_text="你之前说：这次又被误路由成 proposal 了。说下原因，不要改。",
+                    reason="forced test path",
+                    complexity="medium",
+                    plan_level="light",
+                    plan_package_policy="confirm",
+                ),
+                state_store=store,
+                config=config,
+                kb_artifact=None,
+            )
+
+            self.assertEqual(routed.route_name, "consult")
+            self.assertIsNone(plan_artifact)
+            self.assertIsNone(store.get_current_plan_proposal())
+            self.assertTrue(any("Bypassed plan proposal materialization" in note for note in notes))
+
+    def test_engine_proposal_fuse_consumes_matching_confirmed_decision_on_explain_only_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            pending = run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            confirmed = confirm_decision(
+                pending.recovered_context.current_decision,
+                option_id="option_1",
+                source="text",
+                raw_input="1",
+            )
+            store.set_current_decision(confirmed)
+
+            routed, plan_artifact, notes, _ = _advance_planning_route(
+                RouteDecision(
+                    route_name="light_iterate",
+                    request_text="你之前说：这次又被误路由成 proposal 了。说下原因，不要改。",
+                    reason="forced test path",
+                    complexity="medium",
+                    plan_level="light",
+                    plan_package_policy="confirm",
+                ),
+                state_store=store,
+                config=config,
+                kb_artifact=None,
+                confirmed_decision=confirmed,
+            )
+
+            self.assertEqual(routed.route_name, "consult")
+            self.assertIsNone(plan_artifact)
+            self.assertIsNone(store.get_current_decision())
+            self.assertTrue(any(f"Decision consumed: {confirmed.decision_id}" in note for note in notes))
+
+    def test_engine_proposal_fuse_keeps_nonmatching_confirmed_decision_state_on_explain_only_return(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            pending = run_runtime(
+                "~go plan payload 放 host root 还是 workspace/.sopify-runtime",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            confirmed = confirm_decision(
+                pending.recovered_context.current_decision,
+                option_id="option_1",
+                source="text",
+                raw_input="1",
+            )
+            mismatched_current = replace(confirmed, decision_id="decision-mismatch")
+            store.set_current_decision(mismatched_current)
+
+            routed, plan_artifact, notes, _ = _advance_planning_route(
+                RouteDecision(
+                    route_name="light_iterate",
+                    request_text="你之前说：这次又被误路由成 proposal 了。说下原因，不要改。",
+                    reason="forced test path",
+                    complexity="medium",
+                    plan_level="light",
+                    plan_package_policy="confirm",
+                ),
+                state_store=store,
+                config=config,
+                kb_artifact=None,
+                confirmed_decision=confirmed,
+            )
+
+            self.assertEqual(routed.route_name, "consult")
+            self.assertIsNone(plan_artifact)
+            current_decision = store.get_current_decision()
+            self.assertIsNotNone(current_decision)
+            self.assertEqual(current_decision.decision_id, "decision-mismatch")
+            self.assertFalse(any(f"Decision consumed: {confirmed.decision_id}" in note for note in notes))
 
     def test_advance_planning_route_fail_closed_when_workflow_policy_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

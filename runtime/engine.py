@@ -56,7 +56,10 @@ from .plan_proposal import (
     refresh_plan_proposal_state,
 )
 from .replay import ReplayWriter, build_compare_replay_event, build_decision_replay_event
-from .router import Router
+from .router import (
+    Router,
+    detect_explain_only_consult_override,
+)
 from .skill_registry import SkillRegistry
 from .skill_runner import SkillExecutionError, run_runtime_skill
 from .state import (
@@ -1767,7 +1770,7 @@ def _plan_review_route(
     )
 
 
-def _normalized_plan_package_policy(decision: RouteDecision) -> str:
+def _normalized_plan_package_policy(decision: RouteDecision, *, config: RuntimeConfig) -> str:
     """Fail closed for legacy or malformed planning routes that omit the new policy."""
     policy = str(decision.plan_package_policy or "none").strip() or "none"
     if policy != "none":
@@ -1775,6 +1778,8 @@ def _normalized_plan_package_policy(decision: RouteDecision) -> str:
     if decision.route_name == "plan_only":
         return "immediate"
     if decision.route_name in {"workflow", "light_iterate"}:
+        if find_plan_by_request_reference(decision.request_text, config=config) is not None:
+            return "confirm"
         if request_explicitly_wants_new_plan(decision.request_text):
             return "immediate"
         return "confirm"
@@ -1828,7 +1833,7 @@ def _advance_planning_route(
     confirmed_decision: DecisionState | None = None,
 ) -> tuple[RouteDecision, PlanArtifact | None, list[str], KbArtifact | None]:
     notes: list[str] = []
-    plan_package_policy = _normalized_plan_package_policy(decision)
+    plan_package_policy = _normalized_plan_package_policy(decision, config=config)
     kb_artifact = _merge_kb_artifacts(kb_artifact, ensure_blueprint_scaffold(config), config=config)
 
     pending_clarification = _build_route_native_clarification_state(decision, config=config)
@@ -1962,6 +1967,33 @@ def _advance_planning_route(
         notes.extend(gate_notes)
         return (routed_decision, plan_artifact, notes, kb_artifact)
 
+    explain_only_override = detect_explain_only_consult_override(
+        decision.request_text,
+        command=decision.command,
+        current_run=state_store.get_current_run(),
+        current_plan=state_store.get_current_plan(),
+        current_plan_proposal=state_store.get_current_plan_proposal(),
+        last_route=state_store.get_last_route(),
+    )
+    if explain_only_override is not None and plan_package_policy == "confirm":
+        notes.append("Bypassed plan proposal materialization for explain-only request")
+        if _consume_current_decision_if_confirmed_match(state_store, confirmed_decision):
+            notes.append(f"Decision consumed: {confirmed_decision.decision_id}")
+        return (
+            RouteDecision(
+                route_name="consult",
+                request_text=decision.request_text,
+                reason=str(explain_only_override["reason"]),
+                complexity="simple",
+                should_recover_context=True,
+                candidate_skill_ids=("analyze",),
+                artifacts=dict(explain_only_override["artifacts"]),
+            ),
+            None,
+            notes,
+            kb_artifact,
+        )
+
     if plan_package_policy == "confirm":
         topic_key, reserved_plan_id, proposed_path = reserve_plan_identity(
             decision.request_text,
@@ -2061,19 +2093,13 @@ def _resolve_plan_for_request(
             reason_note="after decision confirmation",
         )
 
-    explicit_new_plan = request_explicitly_wants_new_plan(decision.request_text)
     explicit_plan = find_plan_by_request_reference(decision.request_text, config=config)
+    explicit_new_plan = request_explicitly_wants_new_plan(decision.request_text)
 
     if active_plan_binding_selection == ACTIVE_PLAN_NEW_OPTION_ID:
         return _PlanSelection(
             action="create_new",
             reason_note="(selected new-plan routing)",
-        )
-
-    if explicit_new_plan:
-        return _PlanSelection(
-            action="create_new",
-            reason_note="(explicit new-plan request)",
         )
 
     if explicit_plan is not None:
@@ -2087,6 +2113,12 @@ def _resolve_plan_for_request(
             action="reuse_existing",
             plan_artifact=explicit_plan,
             reason_note=f"Rebound planning context to existing plan {explicit_plan.path} (explicit plan reference)",
+        )
+
+    if explicit_new_plan:
+        return _PlanSelection(
+            action="create_new",
+            reason_note="(explicit new-plan request)",
         )
 
     if current_plan is not None:
@@ -2147,9 +2179,9 @@ def _should_create_active_plan_binding_decision(
         return False
     if str(decision.artifacts.get("planning_resume_source") or "").strip():
         return False
-    if request_explicitly_wants_new_plan(decision.request_text):
-        return False
     if find_plan_by_request_reference(decision.request_text, config=config) is not None:
+        return False
+    if request_explicitly_wants_new_plan(decision.request_text):
         return False
     return not _request_anchors_current_plan(decision.request_text, current_plan=current_plan)
 
@@ -2183,13 +2215,13 @@ def _preserve_or_clear_current_plan_for_pending_planning_checkpoint(
     if current_plan is None:
         return
 
-    if request_explicitly_wants_new_plan(decision.request_text):
-        state_store.clear_current_plan()
-        return
-
     explicit_plan = find_plan_by_request_reference(decision.request_text, config=config)
     if explicit_plan is not None and explicit_plan.plan_id != current_plan.plan_id:
         state_store.set_current_plan(explicit_plan)
+        return
+
+    if request_explicitly_wants_new_plan(decision.request_text):
+        state_store.clear_current_plan()
         return
 
 
@@ -2301,6 +2333,23 @@ def _consume_current_decision(state_store: StateStore, decision_state: DecisionS
     consumed = consume_decision(decision_state)
     state_store.set_current_decision(consumed)
     state_store.clear_current_decision()
+
+
+def _consume_current_decision_if_confirmed_match(
+    state_store: StateStore,
+    decision_state: DecisionState | None,
+) -> bool:
+    if decision_state is None or decision_state.status != "confirmed" or decision_state.selection is None:
+        return False
+    current_decision = state_store.get_current_decision()
+    if current_decision is None:
+        return False
+    if current_decision.decision_id != decision_state.decision_id:
+        return False
+    if current_decision.status != "confirmed" or current_decision.selection is None:
+        return False
+    _consume_current_decision(state_store, current_decision)
+    return True
 
 
 def _confirmed_decision_context(state_store: StateStore) -> DecisionState | None:

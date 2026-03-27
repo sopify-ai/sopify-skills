@@ -206,6 +206,23 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertEqual(result["allowed_response_mode"], CHECKPOINT_ONLY)
             self.assertTrue(result["handoff"]["pending_fail_closed"])
 
+    def test_gate_surfaces_consult_explain_only_override_reason_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+
+            result = enter_runtime_gate(
+                "解释 runtime gate 为什么这么判，不要改",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["runtime"]["route_name"], "consult")
+            self.assertEqual(result["allowed_response_mode"], NORMAL_RUNTIME_FOLLOWUP)
+            self.assertEqual(result["handoff"]["required_host_action"], "continue_host_consult")
+            self.assertEqual(result["handoff"]["consult_override_reason_code"], "consult_explain_only_override")
+            self.assertEqual(result["trigger_evidence"]["consult_override_reason_code"], "consult_explain_only_override")
+
     def test_gate_maps_decision_pending_to_checkpoint_only(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

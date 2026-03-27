@@ -10,7 +10,7 @@ from .clarification import has_submitted_clarification, parse_clarification_resp
 from .decision import has_submitted_decision, parse_decision_response
 from .entry_guard import DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE
 from .execution_confirm import parse_execution_confirm_response
-from .plan_scaffold import request_explicitly_wants_new_plan
+from .plan_scaffold import find_plan_by_request_reference, request_explicitly_wants_new_plan
 from .plan_proposal import parse_plan_proposal_response
 from .models import ClarificationState, DecisionState, RouteDecision, RuntimeConfig, SkillMeta
 from .skill_resolver import resolve_route_candidate_skills, resolve_runtime_skill_id
@@ -142,6 +142,23 @@ _PLAN_MATERIALIZATION_META_DEBUG_PATTERNS = (
     re.compile(r"(不要|别再|不要再|stop|don't).*(生成|创建|create).*(plan|方案)", re.IGNORECASE),
     re.compile(r"(分析下|解释下|看看|review).*(命中|hit).*(guard|plan|方案)", re.IGNORECASE),
 )
+CONSULT_EXPLAIN_ONLY_OVERRIDE_REASON_CODE = "consult_explain_only_override"
+_EXPLAIN_ONLY_NO_CHANGE_PATTERNS = (
+    re.compile(r"(不要改|先别改|别改|不改代码|不改)", re.IGNORECASE),
+    re.compile(r"(do not|don't|no need to)\s+(change|edit|modify|fix|patch)", re.IGNORECASE),
+)
+_EXPLAIN_ONLY_SIGNAL_PATTERNS = (
+    re.compile(r"(说下原因|解释下|解释一下|说明一下|分析下原因|看看原因)", re.IGNORECASE),
+    re.compile(r"(为什么|为何|原因|解释|说明|analy[sz]e|explain|why)", re.IGNORECASE),
+)
+_EXPLAIN_ONLY_REFERENTIAL_PATTERNS = (
+    re.compile(r"(你之前说|这次又|又被|为什么这么判|怎么会这样|为什么会这样)", re.IGNORECASE),
+)
+_EXPLAIN_ONLY_META_DEBUG_PATTERNS = (
+    re.compile(r"(误路由|路由成|proposal|plan_proposal_pending)", re.IGNORECASE),
+    re.compile(r"(runtime\s*gate|gate|router|guard|contract|checkpoint|handoff)", re.IGNORECASE),
+    re.compile(r"(clarification_pending|decision_pending|execution_confirm_pending)", re.IGNORECASE),
+)
 _EXPLICIT_PLAN_PACKAGE_PATTERNS = (
     re.compile(r"(写到|写入|落到).*(background\.md|design\.md|tasks\.md)", re.IGNORECASE),
     re.compile(r"(写到|写入|落到).*(\.sopify-skills/plan/)", re.IGNORECASE),
@@ -245,12 +262,14 @@ class Router:
         review_current_plan_proposal = self.state_store.get_current_plan_proposal()
         review_current_clarification = self.state_store.get_current_clarification()
         review_current_decision = self.state_store.get_current_decision()
+        review_last_route = self.state_store.get_last_route()
 
         global_active_run = self.global_state_store.get_current_run()
         global_current_plan = self.global_state_store.get_current_plan()
         global_current_plan_proposal = self.global_state_store.get_current_plan_proposal()
         global_current_clarification = self.global_state_store.get_current_clarification()
         global_current_decision = self.global_state_store.get_current_decision()
+        global_last_route = self.global_state_store.get_last_route()
 
         # Review checkpoints stay session-first; execution truth stays global-first.
         current_clarification = review_current_clarification or global_current_clarification
@@ -259,12 +278,13 @@ class Router:
         execution_active_run = global_active_run or review_active_run
         execution_current_plan = global_current_plan or review_current_plan
         current_plan = review_current_plan or global_current_plan
+        current_last_route = review_last_route or global_last_route
 
         decide_decision = _classify_decide_command(text, skills=skills)
         if decide_decision is not None:
             return self._with_capture(decide_decision)
 
-        command_decision = _classify_command(text, skills=skills)
+        command_decision = _classify_command(text, skills=skills, config=self.config)
         if current_clarification is not None and current_clarification.status == "pending":
             pending_clarification = _classify_pending_clarification(
                 text,
@@ -379,6 +399,27 @@ class Router:
         if plan_meta_debug_route is not None:
             return self._with_capture(plan_meta_debug_route)
 
+        explain_only_override = detect_explain_only_consult_override(
+            text,
+            command=command_decision.command if command_decision is not None else None,
+            current_run=execution_active_run,
+            current_plan=current_plan,
+            current_plan_proposal=current_plan_proposal,
+            last_route=current_last_route,
+        )
+        if explain_only_override is not None:
+            return self._with_capture(
+                RouteDecision(
+                    route_name="consult",
+                    request_text=text,
+                    reason=explain_only_override["reason"],
+                    complexity="simple",
+                    should_recover_context=current_plan is not None or current_plan_proposal is not None,
+                    candidate_skill_ids=_candidate_skills("consult", skills, "analyze"),
+                    artifacts=explain_only_override["artifacts"],
+                )
+            )
+
         runtime_first_guard = match_runtime_first_guard(text)
         if runtime_first_guard is not None:
             return self._with_capture(
@@ -388,7 +429,7 @@ class Router:
                     reason=runtime_first_guard["reason"],
                     complexity="complex",
                     plan_level="standard",
-                    plan_package_policy=_plan_package_policy_for_route("workflow", text),
+                    plan_package_policy=_plan_package_policy_for_route("workflow", text, config=self.config),
                     candidate_skill_ids=_candidate_skills("workflow", skills, "analyze", "design", "develop"),
                     artifacts={
                         "entry_guard_reason_code": DIRECT_EDIT_BLOCKED_RUNTIME_REQUIRED_REASON_CODE,
@@ -425,7 +466,7 @@ class Router:
                     reason=signal.reason,
                     complexity=signal.level,
                     plan_level=signal.plan_level,
-                    plan_package_policy=_plan_package_policy_for_route("light_iterate", text),
+                    plan_package_policy=_plan_package_policy_for_route("light_iterate", text, config=self.config),
                     candidate_skill_ids=_candidate_skills("light_iterate", skills, "design", "develop"),
                 )
             )
@@ -436,7 +477,7 @@ class Router:
                 reason=signal.reason,
                 complexity=signal.level,
                 plan_level=signal.plan_level,
-                plan_package_policy=_plan_package_policy_for_route("workflow", text),
+                plan_package_policy=_plan_package_policy_for_route("workflow", text, config=self.config),
                 candidate_skill_ids=_candidate_skills("workflow", skills, "analyze", "design", "develop"),
             )
         )
@@ -464,7 +505,7 @@ class Router:
         )
 
 
-def _classify_command(text: str, *, skills: Iterable[SkillMeta]) -> RouteDecision | None:
+def _classify_command(text: str, *, skills: Iterable[SkillMeta], config: RuntimeConfig) -> RouteDecision | None:
     for pattern, command in _COMMAND_PATTERNS:
         match = pattern.match(text)
         if not match:
@@ -521,7 +562,7 @@ def _classify_command(text: str, *, skills: Iterable[SkillMeta]) -> RouteDecisio
                 command=command,
                 complexity="complex",
                 plan_level="standard",
-                plan_package_policy=_plan_package_policy_for_route("workflow", request_text),
+                plan_package_policy=_plan_package_policy_for_route("workflow", request_text, config=config),
                 candidate_skill_ids=_candidate_skills("workflow", skills, "analyze", "design", "develop"),
             )
         if command == "~compare":
@@ -897,6 +938,45 @@ def _classify_plan_materialization_meta_debug(
     )
 
 
+def detect_explain_only_consult_override(
+    text: str,
+    *,
+    command: str | None = None,
+    current_run=None,
+    current_plan=None,
+    current_plan_proposal=None,
+    last_route: RouteDecision | None = None,
+) -> dict[str, object] | None:
+    normalized = text.strip()
+    if not normalized or command is not None:
+        return None
+    lowered = normalized.lower()
+    if any(keyword.lower() in lowered for keyword in _ACTION_KEYWORDS):
+        return None
+
+    has_no_change = any(pattern.search(normalized) is not None for pattern in _EXPLAIN_ONLY_NO_CHANGE_PATTERNS)
+    has_explain_signal = any(pattern.search(normalized) is not None for pattern in _EXPLAIN_ONLY_SIGNAL_PATTERNS)
+    if not (has_no_change and has_explain_signal):
+        return None
+
+    has_meta_debug_context = any(pattern.search(normalized) is not None for pattern in _EXPLAIN_ONLY_META_DEBUG_PATTERNS)
+    has_referential_signal = any(pattern.search(normalized) is not None for pattern in _EXPLAIN_ONLY_REFERENTIAL_PATTERNS)
+    has_recent_runtime_context = any(
+        value is not None
+        for value in (current_run, current_plan, current_plan_proposal, last_route)
+    )
+    if not has_meta_debug_context and not (has_referential_signal and has_recent_runtime_context):
+        return None
+
+    return {
+        "reason": "Matched explain-only override and bypassed planning materialization",
+        "artifacts": {
+            "consult_mode": "explain_only_override",
+            "consult_override_reason_code": CONSULT_EXPLAIN_ONLY_OVERRIDE_REASON_CODE,
+        },
+    }
+
+
 def _is_consultation(text: str) -> bool:
     normalized = text.strip().lower()
     if not normalized:
@@ -916,17 +996,19 @@ def _has_process_semantic_intent(text: str) -> bool:
     return any(pattern.search(text) is not None for pattern in _PROCESS_FORCE_PATTERNS)
 
 
-def _plan_package_policy_for_route(route_name: str, request_text: str) -> str:
+def _plan_package_policy_for_route(route_name: str, request_text: str, *, config: RuntimeConfig) -> str:
     if route_name == "plan_only":
         return "immediate"
     if route_name not in {"workflow", "light_iterate"}:
         return "none"
-    if _request_explicitly_materializes_plan(request_text):
+    if _request_explicitly_materializes_plan(request_text, config=config):
         return "immediate"
     return "confirm"
 
 
-def _request_explicitly_materializes_plan(request_text: str) -> bool:
+def _request_explicitly_materializes_plan(request_text: str, *, config: RuntimeConfig) -> bool:
+    if find_plan_by_request_reference(request_text, config=config) is not None:
+        return False
     if request_explicitly_wants_new_plan(request_text):
         return True
     return any(pattern.search(request_text) is not None for pattern in _EXPLICIT_PLAN_PACKAGE_PATTERNS)

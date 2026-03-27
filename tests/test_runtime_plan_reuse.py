@@ -159,6 +159,70 @@ class PlanReuseRuntimeTests(unittest.TestCase):
             self.assertNotEqual(first.plan_artifact.plan_id, current_plan.plan_id)
             self.assertEqual(_plan_dir_count(workspace), 2)
 
+    def test_negated_new_plan_phrase_reuses_active_plan_instead_of_creating_scaffold(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                "~go plan 不要新建新的 plan 包，直接在当前 plan 上继续细化 tasks",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "plan_only")
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertEqual(result.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(_plan_dir_count(workspace), 1)
+
+    def test_explicit_plan_reference_wins_over_positive_new_plan_phrase(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            target_plan = create_plan_scaffold("补 runtime 骨架", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                f"~go plan 切到 {target_plan.plan_id} 继续评审，不要复用当前 plan，直接新建 plan",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "plan_only")
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertEqual(result.plan_artifact.plan_id, target_plan.plan_id)
+            self.assertEqual(_plan_dir_count(workspace), 2)
+
+    def test_trailing_positive_new_plan_phrase_overrides_earlier_negated_phrase(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            config = load_runtime_config(workspace)
+            store = StateStore(config)
+            store.ensure()
+            current_plan = create_plan_scaffold("第一性原理协作规则分层落地", config=config, level="standard")
+            store.set_current_plan(current_plan)
+
+            result = run_runtime(
+                "~go plan 不是不要新建 plan，而是要新建 plan",
+                workspace_root=workspace,
+                user_home=workspace / "home",
+            )
+
+            self.assertEqual(result.route.route_name, "plan_only")
+            self.assertIsNotNone(result.plan_artifact)
+            assert result.plan_artifact is not None
+            self.assertNotEqual(result.plan_artifact.plan_id, current_plan.plan_id)
+            self.assertEqual(_plan_dir_count(workspace), 2)
+
     def test_decision_resume_reuses_existing_active_plan(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)
