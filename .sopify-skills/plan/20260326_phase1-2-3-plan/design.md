@@ -80,15 +80,17 @@
 Case（后续拆分 Plan A 子计划时必须覆盖）:
 - Case A-1 | checkpoint 中 explain-only 咨询不应二次物化
   - 场景: 已存在 `confirm_plan_package / confirm_decision` 等 pending checkpoint 时，用户提出“只分析、不改文件”的追问。
-  - 期望: 优先按 consult 回答并保持当前 checkpoint 身份稳定；除非用户明确提交 `继续 / 取消 / 1/2/...`，不得新建或重开 plan proposal。
+  - 期望: 优先按 consult 回答并保持当前 checkpoint 身份稳定；除非用户明确提交 `继续 / 取消 / 1/2/...`，不得新建或重开 plan proposal，也不得仅因存在 pending decision 就自动重跑 execution gate。
   - 验收: 同一 session 连续 explain-only 问答后，不新增 proposal `checkpoint_id`，且 `plan/` 下无新建方案包目录。
+  - 验收补充: 当消息显式锚定 existing plan（如 `plan_id / plan path / plan title / 当前方案`）且语义仍为“分析 / 解释 / 判断是否认可 / 还有什么需要确认”时，应继续返回 consult；`current_decision` 身份保持稳定，不得漂移为新的 decision/proposal checkpoint。
 - Case A-2 | 决策编号确认携带补充文本应稳健消费
   - 场景: 用户以 `1/2` 开头确认决策，同时附带后续动作文本（如“并把 case 补进总纲”）。
   - 期望: 先稳定消费 decision selection，再把后续文本作为 follow-up 意图处理，避免回退到“无效选择”或重复 decision checkpoint。
 - Case A-3 | 引用受保护 plan 资产的分析请求不应默认升级阻断
-  - 场景: 用户消息包含 `.sopify-skills/plan/...` 引用，但意图是“只分析/不改文件/判断是否认可”。
-  - 期望: 优先按 consult 或非阻断路径处理；仅在命中明确执行动作（如 `继续/next/开始/选择`）时进入 checkpoint 约束。
+  - 场景: 用户消息包含 `.sopify-skills/plan/...` 路径引用，或显式引用 existing plan（如 `plan_id / plan title`），但意图是“只分析/不改文件/判断是否认可”。
+  - 期望: 优先按 consult 或非阻断路径处理；仅在命中明确执行动作（如 `继续/next/开始/选择`）时进入 checkpoint 约束，不得因为“显式 plan 引用 + pending checkpoint”组合而默认升级为阻断路径。
   - 验收: 在同一 session 下，连续分析问答不会新增 `plan_proposal_pending`；`required_host_action` 不因“只分析”从 consult 漂移到阻断 checkpoint。
+  - 验收补充: `分析下 <plan_id> 可以执行了吗还有什么需要确认` 这类请求，在未命中明确确认动作时，应保持为 consult / inspect 类回答，不得直接消费或重开 `confirm_decision`。
 - Case A-4 | “取消 checkpoint”应幂等收口，不得派生新 pending
   - 场景: 当前处于 `confirm_decision / confirm_plan_package` pending，用户输入“取消这个 checkpoint”。
   - 期望: 只取消当前 pending（或返回已取消状态），并恢复到稳定可继续态；不得创建新的 proposal 或切到其他 checkpoint 类型。
