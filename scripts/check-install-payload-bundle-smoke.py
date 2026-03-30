@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from installer.hosts import get_host_adapter
+from installer.inspection import inspect_payload_bundle_resolution
 from installer.models import InstallError, parse_install_target
 from installer.validate import run_bundle_smoke_check, validate_bundle_install, validate_host_install, validate_payload_install
 
@@ -97,9 +98,14 @@ def run_smoke(*, target_value: str, temp_root: Path) -> dict[str, Any]:
 
     host_paths = validate_host_install(adapter, home_root=temp_home)
     payload_paths = validate_payload_install(payload_root)
+    payload_bundle = inspect_payload_bundle_resolution(payload_root=payload_root, host_id=target.host)
 
     if bundle_root.exists():
         raise RuntimeError("Workspace bundle should not exist before trigger-time bootstrap.")
+    if payload_bundle.source_kind != "global_active":
+        raise RuntimeError(f"Unexpected payload bundle source_kind: {payload_bundle.source_kind!r}")
+    if payload_bundle.reason_code != "PAYLOAD_BUNDLE_READY":
+        raise RuntimeError(f"Unexpected payload bundle reason_code: {payload_bundle.reason_code!r}")
 
     bootstrap_stdout = _run_workspace_bootstrap(helper_path=helper_path, workspace_root=workspace_root)
     bundle_paths = validate_bundle_install(bundle_root)
@@ -128,6 +134,7 @@ def run_smoke(*, target_value: str, temp_root: Path) -> dict[str, Any]:
         "host_root": str(host_root),
         "payload_root": str(payload_root),
         "bundle_root": str(bundle_root),
+        "payload_bundle": payload_bundle.to_status_dict(),
         "checks": {
             "single_install_command_only": True,
             "workspace_bundle_absent_before_trigger": True,

@@ -98,8 +98,11 @@ class DistributionFacadeTests(unittest.TestCase):
             self.assertFalse(report.status_payload["workspace_state"]["requested"])
             self.assertEqual(report.status_payload["workspace_state"]["bootstrap_mode"], "on_first_project_trigger")
             self.assertEqual(report.status_payload["hosts"][0]["state"]["workspace_bundle_healthy"], "not_requested")
+            self.assertEqual(report.status_payload["hosts"][0]["payload_bundle"]["source_kind"], "global_active")
+            self.assertEqual(report.status_payload["hosts"][0]["payload_bundle"]["reason_code"], "PAYLOAD_BUNDLE_READY")
             rendered = render_distribution_result(report)
             self.assertIn("source channel: repo-local", rendered)
+            self.assertIn("payload bundle: source_kind=global_active, reason_code=PAYLOAD_BUNDLE_READY", rendered)
             self.assertIn("workspace: will bootstrap on first project trigger", rendered)
             self.assertIn("workspace bundle: skip (WORKSPACE_NOT_REQUESTED)", rendered)
 

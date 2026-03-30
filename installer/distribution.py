@@ -19,6 +19,7 @@ WORKSPACE_NOT_REQUESTED_REASON = "WORKSPACE_NOT_REQUESTED"
 _CHECK_LABELS = {
     "host_prompt_present": "host prompt",
     "payload_present": "payload",
+    "payload_bundle_resolution": "payload bundle",
     "workspace_bundle_manifest": "workspace bundle",
     "workspace_handoff_first": "handoff-first runtime",
     "workspace_preferences_preload": "preferences preload",
@@ -159,6 +160,12 @@ def render_distribution_result(report: DistributionInstallReport) -> str:
         f"  workspace bootstrap: {_workspace_bootstrap_action(install_result)}",
         "",
         "Verification:",
+        (
+            "  payload bundle: source_kind={source_kind}, reason_code={reason_code}".format(
+                source_kind=(selected_host.get("payload_bundle") or {}).get("source_kind", "unresolved"),
+                reason_code=(selected_host.get("payload_bundle") or {}).get("reason_code", "GLOBAL_INDEX_CORRUPTED"),
+            )
+        ),
         (
             "  host state: installed={installed}, configured={configured}, workspace_bundle_healthy={workspace_bundle_healthy}".format(
                 installed=selected_host["state"]["installed"],

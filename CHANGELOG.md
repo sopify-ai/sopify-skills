@@ -6,6 +6,25 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-03-30.134624] - 2026-03-30
+
+### Scripts
+
+- Adjusted maintenance scripts:
+  - `scripts/check-install-payload-bundle-smoke.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_distribution.py`
+  - `tests/test_installer_status_doctor.py`
+
+### Changed
+
+- Updated project files:
+  - `installer/distribution.py`
+  - `installer/inspection.py`
+
 ## [2026-03-30.133450] - 2026-03-30
 
 ### Scripts

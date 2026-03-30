@@ -39,6 +39,14 @@ REASON_WORKSPACE_NOT_REQUESTED = "WORKSPACE_NOT_REQUESTED"
 REASON_RUNTIME_STATE_CONFLICT = "RUNTIME_STATE_CONFLICT"
 REASON_QUARANTINED_RUNTIME_STATE = "QUARANTINED_RUNTIME_STATE"
 REASON_RUNTIME_INSPECTION_UNAVAILABLE = "RUNTIME_INSPECTION_UNAVAILABLE"
+REASON_PAYLOAD_BUNDLE_READY = "PAYLOAD_BUNDLE_READY"
+REASON_GLOBAL_BUNDLE_MISSING = "GLOBAL_BUNDLE_MISSING"
+REASON_GLOBAL_BUNDLE_INCOMPATIBLE = "GLOBAL_BUNDLE_INCOMPATIBLE"
+REASON_GLOBAL_INDEX_CORRUPTED = "GLOBAL_INDEX_CORRUPTED"
+REASON_LEGACY_FALLBACK_SELECTED = "LEGACY_FALLBACK_SELECTED"
+SOURCE_KIND_GLOBAL_ACTIVE = "global_active"
+SOURCE_KIND_LEGACY_LAYOUT = "legacy_layout"
+SOURCE_KIND_UNRESOLVED = "unresolved"
 STATUS_READY_STATES = {"READY", "NEWER_THAN_GLOBAL"}
 STATUS_WARN_STATES = {"MISSING", "OUTDATED_COMPATIBLE"}
 _STATE_CONFLICT_EXPLANATIONS = {
@@ -64,6 +72,7 @@ class InspectionCheck:
     evidence: tuple[str, ...] = ()
     recommendation: str | None = None
     host_id: str | None = None
+    source_kind: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -73,11 +82,56 @@ class InspectionCheck:
         }
         if self.host_id is not None:
             payload["host_id"] = self.host_id
+        if self.source_kind is not None:
+            payload["source_kind"] = self.source_kind
         if self.evidence:
             payload["evidence"] = list(self.evidence)
         if self.recommendation:
             payload["recommendation"] = self.recommendation
         return payload
+
+
+@dataclass(frozen=True)
+class PayloadBundleResolution:
+    """Stable payload-bundle resolution summary shared by diagnostics surfaces."""
+
+    source_kind: str
+    reason_code: str
+    status: str
+    bundle_root: Path | None = None
+    bundle_manifest_path: Path | None = None
+    recommendation: str | None = None
+
+    def to_status_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "source_kind": self.source_kind,
+            "reason_code": self.reason_code,
+        }
+        if self.bundle_root is not None:
+            payload["bundle_root"] = str(self.bundle_root)
+            if self.source_kind == SOURCE_KIND_GLOBAL_ACTIVE:
+                payload["selected_version"] = self.bundle_root.name
+        if self.bundle_manifest_path is not None:
+            payload["bundle_manifest_path"] = str(self.bundle_manifest_path)
+        if self.recommendation:
+            payload["recommendation"] = self.recommendation
+        return payload
+
+    def to_check(self, *, host_id: str) -> InspectionCheck:
+        evidence = tuple(
+            str(path)
+            for path in (self.bundle_manifest_path, self.bundle_root)
+            if path is not None
+        )
+        return InspectionCheck(
+            host_id=host_id,
+            check_id="payload_bundle_resolution",
+            status=self.status,
+            reason_code=self.reason_code,
+            source_kind=self.source_kind,
+            evidence=evidence,
+            recommendation=self.recommendation,
+        )
 
 
 @dataclass(frozen=True)
@@ -87,6 +141,7 @@ class HostInspection:
     registration: HostRegistration
     host_prompt: InspectionCheck
     payload: InspectionCheck
+    payload_bundle: PayloadBundleResolution
     workspace_bundle: InspectionCheck
     handoff_first: InspectionCheck
     preferences_preload: InspectionCheck
@@ -114,12 +169,14 @@ class HostInspection:
                 "configured": STATUS_YES if configured else STATUS_NO,
                 "workspace_bundle_healthy": workspace_bundle_healthy,
             },
+            "payload_bundle": self.payload_bundle.to_status_dict(),
         }
 
     def doctor_checks(self) -> tuple[InspectionCheck, ...]:
         return (
             self.host_prompt,
             self.payload,
+            self.payload_bundle.to_check(host_id=self.capability.host_id),
             self.workspace_bundle,
             self.handoff_first,
             self.preferences_preload,
@@ -175,6 +232,12 @@ def inspect_host(
                 reason_code=REASON_OK,
                 recommendation=f"Install Sopify for {capability.host_id} to provision the global payload.",
             ),
+            payload_bundle=PayloadBundleResolution(
+                source_kind=SOURCE_KIND_UNRESOLVED,
+                reason_code="HOST_NOT_INSTALLED",
+                status=CHECK_SKIP,
+                recommendation=f"Install Sopify for {capability.host_id} to provision the global payload bundle index.",
+            ),
             workspace_bundle=InspectionCheck(
                 host_id=capability.host_id,
                 check_id="workspace_bundle_manifest",
@@ -203,6 +266,7 @@ def inspect_host(
         )
     host_prompt = _inspect_host_prompt(adapter=adapter, capability=capability, home_root=home_root)
     payload = _inspect_payload(adapter=adapter, capability=capability, home_root=home_root)
+    payload_bundle = inspect_payload_bundle_resolution(payload_root=adapter.payload_root(home_root), host_id=capability.host_id)
     if workspace_root is None:
         workspace_bundle = InspectionCheck(
             host_id=capability.host_id,
@@ -235,6 +299,7 @@ def inspect_host(
             registration=registration,
             host_prompt=host_prompt,
             payload=payload,
+            payload_bundle=payload_bundle,
             workspace_bundle=workspace_bundle,
             handoff_first=handoff_first,
             preferences_preload=preferences_preload,
@@ -273,6 +338,7 @@ def inspect_host(
         registration=registration,
         host_prompt=host_prompt,
         payload=payload,
+        payload_bundle=payload_bundle,
         workspace_bundle=workspace_bundle,
         handoff_first=handoff_first,
         preferences_preload=preferences_preload,
@@ -346,15 +412,20 @@ def render_status_text(payload: dict[str, object]) -> str:
     ]
     for host in payload["hosts"]:
         state = host["state"]
+        payload_bundle = host.get("payload_bundle") or {}
         lines.append(
-            "  - {host_id}: tier={support_tier}, installed={installed}, configured={configured}, workspace_bundle_healthy={workspace_bundle_healthy}".format(
+            "  - {host_id}: tier={support_tier}, installed={installed}, configured={configured}, workspace_bundle_healthy={workspace_bundle_healthy}, payload_bundle={payload_source_kind} ({payload_reason_code})".format(
                 host_id=host["host_id"],
                 support_tier=host["support_tier"],
                 installed=state["installed"],
                 configured=state["configured"],
                 workspace_bundle_healthy=state["workspace_bundle_healthy"],
+                payload_source_kind=payload_bundle.get("source_kind", SOURCE_KIND_UNRESOLVED),
+                payload_reason_code=payload_bundle.get("reason_code", REASON_GLOBAL_INDEX_CORRUPTED),
             )
         )
+        if payload_bundle.get("recommendation"):
+            lines.append(f"    payload_hint: {payload_bundle['recommendation']}")
     workspace_state = payload["workspace_state"]
     lines.append("Workspace:")
     if not workspace_state["requested"]:
@@ -414,7 +485,8 @@ def render_doctor_text(payload: dict[str, object]) -> str:
     ]
     for check in payload["checks"]:
         prefix = f"{check.get('host_id')}:" if check.get("host_id") else ""
-        line = f"  - {prefix}{check['check_id']} -> {check['status']} ({check['reason_code']})"
+        source_suffix = f" [{check['source_kind']}]" if check.get("source_kind") else ""
+        line = f"  - {prefix}{check['check_id']} -> {check['status']} ({check['reason_code']}){source_suffix}"
         if check.get("recommendation"):
             line += f" | {check['recommendation']}"
         lines.append(line)
@@ -608,6 +680,76 @@ def _inspect_payload(*, adapter: HostAdapter, capability: HostCapability, home_r
             evidence=_paths_from_error(exc),
             recommendation=f"Run python3 scripts/install_sopify.py --target {capability.host_id}:zh-CN to refresh the host payload.",
         )
+
+
+def inspect_payload_bundle_resolution(*, payload_root: Path, host_id: str) -> PayloadBundleResolution:
+    payload_manifest_path = payload_root / "payload-manifest.json"
+    if not payload_manifest_path.is_file():
+        return PayloadBundleResolution(
+            source_kind=SOURCE_KIND_UNRESOLVED,
+            reason_code=REASON_GLOBAL_BUNDLE_MISSING,
+            status=CHECK_FAIL,
+            recommendation=_payload_bundle_recommendation(host_id, REASON_GLOBAL_BUNDLE_MISSING),
+        )
+
+    payload_manifest = _read_json(payload_manifest_path)
+    if not payload_manifest:
+        return PayloadBundleResolution(
+            source_kind=SOURCE_KIND_UNRESOLVED,
+            reason_code=REASON_GLOBAL_INDEX_CORRUPTED,
+            status=CHECK_FAIL,
+            recommendation=_payload_bundle_recommendation(host_id, REASON_GLOBAL_INDEX_CORRUPTED),
+        )
+
+    source_kind = SOURCE_KIND_GLOBAL_ACTIVE if str(payload_manifest.get("bundles_dir") or "").strip() else SOURCE_KIND_LEGACY_LAYOUT
+    try:
+        bundle_root = resolve_payload_bundle_root(payload_root)
+    except InstallError:
+        return PayloadBundleResolution(
+            source_kind=source_kind,
+            reason_code=REASON_GLOBAL_INDEX_CORRUPTED,
+            status=CHECK_FAIL,
+            recommendation=_payload_bundle_recommendation(host_id, REASON_GLOBAL_INDEX_CORRUPTED),
+        )
+
+    bundle_manifest_path = bundle_root / "manifest.json"
+    if not bundle_manifest_path.is_file():
+        return PayloadBundleResolution(
+            source_kind=source_kind,
+            reason_code=REASON_GLOBAL_BUNDLE_MISSING,
+            status=CHECK_FAIL,
+            bundle_root=bundle_root,
+            bundle_manifest_path=bundle_manifest_path,
+            recommendation=_payload_bundle_recommendation(host_id, REASON_GLOBAL_BUNDLE_MISSING),
+        )
+
+    try:
+        validate_bundle_install(bundle_root)
+    except InstallError:
+        return PayloadBundleResolution(
+            source_kind=source_kind,
+            reason_code=REASON_GLOBAL_BUNDLE_INCOMPATIBLE,
+            status=CHECK_FAIL,
+            bundle_root=bundle_root,
+            bundle_manifest_path=bundle_manifest_path,
+            recommendation=_payload_bundle_recommendation(host_id, REASON_GLOBAL_BUNDLE_INCOMPATIBLE),
+        )
+
+    ready_reason = REASON_PAYLOAD_BUNDLE_READY
+    ready_status = CHECK_PASS
+    recommendation = None
+    if source_kind == SOURCE_KIND_LEGACY_LAYOUT:
+        ready_reason = REASON_LEGACY_FALLBACK_SELECTED
+        ready_status = CHECK_WARN
+        recommendation = _payload_bundle_recommendation(host_id, REASON_LEGACY_FALLBACK_SELECTED)
+    return PayloadBundleResolution(
+        source_kind=source_kind,
+        reason_code=ready_reason,
+        status=ready_status,
+        bundle_root=bundle_root,
+        bundle_manifest_path=bundle_manifest_path,
+        recommendation=recommendation,
+    )
 
 
 def _inspect_workspace_bundle(
@@ -820,6 +962,19 @@ def _reason_code_from_install_error(exc: InstallError, *, default: str = "MISSIN
     if "missing" in message.lower() or "verification failed" in message.lower():
         return "MISSING_REQUIRED_FILE"
     return default
+
+
+def _payload_bundle_recommendation(host_id: str, reason_code: str) -> str | None:
+    refresh_command = f"python3 scripts/install_sopify.py --target {host_id}:zh-CN"
+    if reason_code == REASON_GLOBAL_BUNDLE_MISSING:
+        return f"Refresh the {host_id} payload because the selected global bundle is missing: {refresh_command}"
+    if reason_code == REASON_GLOBAL_BUNDLE_INCOMPATIBLE:
+        return f"Refresh the {host_id} payload because the selected global bundle is incomplete or incompatible: {refresh_command}"
+    if reason_code == REASON_GLOBAL_INDEX_CORRUPTED:
+        return f"Refresh the {host_id} payload because the payload bundle index is invalid or inconsistent: {refresh_command}"
+    if reason_code == REASON_LEGACY_FALLBACK_SELECTED:
+        return f"Refresh the {host_id} payload to migrate from the legacy bundle layout to the versioned payload index: {refresh_command}"
+    return None
 
 
 def _paths_from_error(exc: InstallError) -> tuple[str, ...]:

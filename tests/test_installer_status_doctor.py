@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -118,9 +119,12 @@ class StatusDoctorContractTests(unittest.TestCase):
             self.assertFalse(payload["workspace_state"]["requested"])
             self.assertEqual(payload["workspace_state"]["bootstrap_mode"], "on_first_project_trigger")
             self.assertEqual(payload["hosts"][0]["state"]["workspace_bundle_healthy"], "not_requested")
+            self.assertEqual(payload["hosts"][0]["payload_bundle"]["source_kind"], "global_active")
+            self.assertEqual(payload["hosts"][0]["payload_bundle"]["reason_code"], "PAYLOAD_BUNDLE_READY")
             rendered = render_status_text(payload)
             self.assertIn("requested: no", rendered)
             self.assertIn("will bootstrap on first project trigger", rendered)
+            self.assertIn("payload_bundle=global_active (PAYLOAD_BUNDLE_READY)", rendered)
 
     def test_doctor_payload_supports_workspace_not_requested(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir:
@@ -138,6 +142,54 @@ class StatusDoctorContractTests(unittest.TestCase):
             )
             self.assertEqual(workspace_check["status"], "skip")
             self.assertEqual(workspace_check["reason_code"], "WORKSPACE_NOT_REQUESTED")
+            payload_bundle_check = next(
+                check
+                for check in payload["checks"]
+                if check["host_id"] == "codex" and check["check_id"] == "payload_bundle_resolution"
+            )
+            self.assertEqual(payload_bundle_check["status"], "pass")
+            self.assertEqual(payload_bundle_check["reason_code"], "PAYLOAD_BUNDLE_READY")
+            self.assertEqual(payload_bundle_check["source_kind"], "global_active")
+
+    def test_status_and_doctor_surface_legacy_payload_bundle_layout(self) -> None:
+        with tempfile.TemporaryDirectory() as home_dir:
+            home_root = Path(home_dir)
+
+            install_host_assets(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home_root, language_directory="CN")
+            install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home_root)
+
+            payload_root = CODEX_ADAPTER.payload_root(home_root)
+            payload_manifest = json.loads((payload_root / "payload-manifest.json").read_text(encoding="utf-8"))
+            active_version = payload_manifest["active_version"]
+            legacy_bundle_root = payload_root / "bundle"
+            shutil.copytree(payload_root / "bundles" / active_version, legacy_bundle_root)
+            _write_json(
+                payload_root / "payload-manifest.json",
+                {
+                    "schema_version": "1",
+                    "payload_version": active_version,
+                    "bundle_version": active_version,
+                    "bundle_manifest": "bundle/manifest.json",
+                    "bundle_template_dir": "bundle",
+                    "helper_entry": "helpers/bootstrap_workspace.py",
+                },
+            )
+
+            status_payload = build_status_payload(home_root=home_root, workspace_root=None)
+            self.assertEqual(status_payload["hosts"][0]["payload_bundle"]["source_kind"], "legacy_layout")
+            self.assertEqual(status_payload["hosts"][0]["payload_bundle"]["reason_code"], "LEGACY_FALLBACK_SELECTED")
+            rendered = render_status_text(status_payload)
+            self.assertIn("payload_bundle=legacy_layout (LEGACY_FALLBACK_SELECTED)", rendered)
+
+            doctor_payload = build_doctor_payload(home_root=home_root, workspace_root=None)
+            payload_bundle_check = next(
+                check
+                for check in doctor_payload["checks"]
+                if check["host_id"] == "codex" and check["check_id"] == "payload_bundle_resolution"
+            )
+            self.assertEqual(payload_bundle_check["status"], "warn")
+            self.assertEqual(payload_bundle_check["reason_code"], "LEGACY_FALLBACK_SELECTED")
+            self.assertEqual(payload_bundle_check["source_kind"], "legacy_layout")
 
     def test_status_json_contains_required_contract_and_workspace_state(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as workspace_dir:
