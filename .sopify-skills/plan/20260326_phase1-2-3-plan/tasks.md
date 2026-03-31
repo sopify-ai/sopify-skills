@@ -46,6 +46,10 @@ archive_ready: false
 - [ ] 4.9 在 Plan C 中明确“bounded side task，不允许自由漫游”
 - [ ] 4.10 在 Plan A 子 plan 中覆盖 `ready_for_execution + state_conflict(abort_conflict)` 收敛 case：必须验证“开始执行 -> state_conflict -> 取消 -> 再次开始执行”不再回环冲突，并沉淀可追溯证据链（`current_gate_receipt / current_run / current_handoff / last_route`）与对应代码链路（`context_snapshot -> router -> engine -> handoff`）
 - [x] 4.11 冻结后续设计边界：`B1` 收口后可先灰度推广；`Plan A / Plan D` 默认必须向后兼容已发布 `B1` contract，不得隐式引入破坏性变更；若需破坏性改动，必须单独立项并附迁移/回滚方案
+- [x] 4.12 在 Plan A 进入实现前冻结 A0 语义契约：按“同一语义类一次收口”设计，不接受“单词/短语补丁式”修复
+- [x] 4.13 在 Plan A 子 plan 中为 `question signal + retopic signal + plan referent` 建立结构化语义类矩阵（后缀/前置/中置疑问）
+- [x] 4.14 将 Case A-7 的验收矩阵固化为 parser 正反例与回归用例；通过标准必须包含“inspect fail-close + revise 保持 + mixed case 保持”
+- [ ] 4.15 将 `plan_proposal_pending + command prefix` 标记为“行为约束待产品确认”并与 parser 收口任务解耦，避免在同一轮混改
 
 ## 5. 明确延后方向
 - [ ] 5.1 若未来启动 B3，单独拍板 `plan_path` 新语义

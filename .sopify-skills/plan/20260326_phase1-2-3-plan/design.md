@@ -77,6 +77,32 @@
 - 仅在 `Plan H + Plan B1` 各自收口后，才进入 Plan A 子 plan
 - 启动前必须先登记真实漏判样本或用户反馈阈值，避免长期欠债无限后延，也避免过早侵入 control-plane 迁移窗口
 
+设计前置（A0，进入 Plan A 子计划前先冻结）:
+- 背景:
+  - 近期在 proposal pending 语境里，多次出现“补一个表述、漏一个表述”的 parser 修复循环。
+  - 核心痛点不是实现复杂度，而是语义边界未一次定义清楚，导致同类句式不断返工。
+- 当前方案现状（已收口）:
+  - referential retopic 基本句式（如“这个方案改成 ...”）已进入 retopic 识别路径。
+  - constraint follow-up question（如“继续按这个方案会有什么风险”）已按 fail-closed 处理，不再误改 checkpoint。
+  - question-like retopic 已按 `question signal + retopic signal + plan referent` 语义类完成 parser 侧收口；纯疑问 fail-close 到 inspect，mixed follow-up revision 保持 revise。
+- 剩余风险分层（用于后续设计，不在总纲阶段改代码）:
+  - 中优先: `plan_proposal_pending + command prefix` 当前是一刀切 inspect；该行为已被测试固化，是否调整属于产品决策，不作为 parser 修补顺手改动项。
+- A0 设计原则（强制）:
+  - 按“同一语义类一次收口”设计，不按单词/短语逐条补丁。
+  - 本类问题仅允许在 parser 层收口；默认不改 engine/router 主流程与状态机 contract。
+  - 对外行为以“结构判定 + 测试矩阵”冻结，不以新增 if-else 词表数量作为完成标准。
+- A0 语义类定义（本轮焦点）:
+  - 语义类: `question signal + retopic signal + plan referent`（用户在询问“能不能/是否要改题”，不是直接要求改题）。
+  - 结构覆盖:
+    1. 后缀疑问: `这个方案改成 X？`
+    2. 前置疑问: `能不能/是否把这个方案改成 X`
+    3. 中置疑问: `这个方案能不能改成 X`
+  - 处理策略: 命中该语义类时优先 fail-close 到 inspect，保持 proposal identity 稳定。
+- A0 非目标:
+  - 不在本轮扩成“所有自然语言疑问句”统一理解。
+  - 不把 `~go plan` 在 proposal pending 下的命令前缀行为与 parser 语义修补混做一轮。
+  - 不通过提升 generic question 优先级来覆盖 retopic 场景，避免误伤正常 revise。
+
 Case（后续拆分 Plan A 子计划时必须覆盖）:
 - Case A-1 | checkpoint 中 explain-only 咨询不应二次物化
   - 场景: 已存在 `confirm_plan_package / confirm_decision` 等 pending checkpoint 时，用户提出“只分析、不改文件”的追问。
@@ -119,6 +145,21 @@ Case（后续拆分 Plan A 子计划时必须覆盖）:
     1. 同一 session 下执行“开始执行 -> 取消 -> 开始执行”序列时，不得再次回到同一 `state_conflict` 原因码。
     2. gate 回执不再反复给出 `run_stage_handoff_mismatch`。
     3. 必须能从以下证据文件复盘整条链路：`.sopify-skills/state/current_gate_receipt.json`、`.sopify-skills/state/sessions/<session_id>/current_run.json`、`.sopify-skills/state/sessions/<session_id>/current_handoff.json`、`.sopify-skills/state/sessions/<session_id>/last_route.json`。
+- Case A-7 | question-like retopic 必须按语义类一次收口
+  - 状态: 已在本轮 parser/test 收口，后续保留为回归基线，不再按“补一个词”方式继续修补。
+  - 场景: proposal pending 下，用户表达“是否要把方案改成 X”，而不是直接要求改题。
+  - 结构族（至少覆盖）:
+    1. `这个方案改成 X？`
+    2. `能不能把这个方案改成 X`
+    3. `是否把这个方案改成 X`
+    4. `这个方案能不能改成 X`
+  - 期望:
+    1. 以上结构统一按 inspect fail-close，不改变 `checkpoint_id / reserved_plan_id / proposed_path / request_text`。
+    2. 声明式 retopic（如 `这个方案改成 X`、`change the plan to X`）仍走 revise。
+    3. mixed case（如 `为什么先做这个？按这个最小范围直接进 3.1 -> 3.6`）仍保持 revise。
+  - 约束:
+    1. 仅允许改 parser，不改 engine/router 主流程。
+    2. 不接受“补一个词”式修复；必须以语义类矩阵验证收口。
 
 ### Plan D | 对外定位与文档
 状态: committed after Plan A scope is stable
