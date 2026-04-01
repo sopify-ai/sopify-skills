@@ -29,6 +29,8 @@ from runtime.gate import CURRENT_GATE_RECEIPT_FILENAME
 from runtime.models import PlanArtifact, RouteDecision, RunState
 from runtime.plan_scaffold import create_plan_scaffold
 from runtime.state import StateStore, iso_now
+from installer.hosts.codex import CODEX_ADAPTER
+from installer.payload import install_global_payload
 
 _SKIP_ASSERTION = object()
 
@@ -90,6 +92,27 @@ def run_smoke(*, temp_root: Path) -> dict[str, Any]:
             expected_action="review_or_execute_plan",
             expected_error_code=None,
             expected_state_files=("current_handoff.json", "current_plan.json", CURRENT_GATE_RECEIPT_FILENAME),
+        )
+    )
+
+    root_confirm_home = temp_root / "root-confirm-home"
+    CODEX_ADAPTER.destination_root(root_confirm_home).mkdir(parents=True, exist_ok=True)
+    install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=root_confirm_home)
+    root_confirm_workspace = temp_root / "root-confirm" / "repo" / "packages" / "feature"
+    (root_confirm_workspace.parents[1] / ".git").mkdir(parents=True, exist_ok=True)
+    scenarios.append(
+        _run_gate_scenario(
+            scenario_id="root_confirm_checkpoint_only",
+            workspace=root_confirm_workspace,
+            home_root=root_confirm_home,
+            request="~go plan monorepo root 选择",
+            expected_exit_code=1,
+            expected_status="error",
+            expected_mode="checkpoint_only",
+            expected_action=None,
+            expected_error_code="workspace_first_write_blocked",
+            expected_state_files=(CURRENT_GATE_RECEIPT_FILENAME,),
+            expected_runtime_route="preflight_blocked",
         )
     )
 

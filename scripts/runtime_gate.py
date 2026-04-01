@@ -43,17 +43,23 @@ def build_parser() -> argparse.ArgumentParser:
     enter.add_argument(
         "--activation-root",
         default=None,
-        help="Optional explicit activation root passed through the ingress contract.",
+        help="Optional explicit activation root passed through the ingress contract; use this to recover from ROOT_CONFIRM_REQUIRED by choosing the current directory, the repository root, or another directory.",
+    )
+    enter.add_argument(
+        "--interaction-mode",
+        choices=("interactive", "non_interactive"),
+        default=None,
+        help="Optional host-provided interaction mode used by first-write policy.",
     )
     enter.add_argument(
         "--payload-root",
         default=None,
-        help="Optional explicit payload root passed through the ingress contract.",
+        help="Optional explicit payload root passed through the ingress contract. This is the only explicit field that selects a payload bundle.",
     )
     enter.add_argument(
         "--host-id",
         default=None,
-        help="Optional explicit host id passed through the ingress contract.",
+        help="Optional explicit host id passed through the ingress contract. Audit-only: it validates the selected payload but does not choose one by itself.",
     )
     enter.add_argument(
         "--requested-root",
@@ -85,6 +91,7 @@ def main(argv: list[str] | None = None) -> int:
         global_config_path=args.global_config_path,
         payload_manifest_path=args.payload_manifest_path,
         activation_root=args.activation_root,
+        interaction_mode=args.interaction_mode,
         payload_root=args.payload_root,
         host_id=args.host_id,
         requested_root=args.requested_root,

@@ -142,6 +142,10 @@ class StatusDoctorContractTests(unittest.TestCase):
             )
             self.assertEqual(workspace_check["status"], "skip")
             self.assertEqual(workspace_check["reason_code"], "WORKSPACE_NOT_REQUESTED")
+            self.assertEqual(
+                workspace_check["recommendation"],
+                "Workspace bootstrap was not requested. Trigger Sopify in a project workspace to bootstrap on demand.",
+            )
             payload_bundle_check = next(
                 check
                 for check in payload["checks"]
@@ -402,7 +406,9 @@ class StatusDoctorContractTests(unittest.TestCase):
                 if check["host_id"] == "codex" and check["check_id"] == "workspace_bundle_manifest"
             )
             self.assertEqual(workspace_check["status"], "pass")
-            self.assertEqual(workspace_check["reason_code"], "WORKSPACE_BUNDLE_READY")
+            self.assertEqual(workspace_check["reason_code"], "STUB_SELECTED")
+            self.assertIn("NON_GIT_WORKSPACE", workspace_check["evidence"])
+            self.assertIn("ignore_mode=noop", workspace_check["evidence"])
 
     def test_doctor_resolves_workspace_capabilities_from_global_bundle_when_workspace_manifest_is_stub_only(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as workspace_dir:
@@ -486,6 +492,25 @@ class StatusDoctorContractTests(unittest.TestCase):
             self.assertEqual(preload_check["reason_code"], "ok")
             self.assertEqual(payload_bundle_check["reason_code"], "GLOBAL_BUNDLE_MISSING")
 
+    def test_doctor_recommends_on_demand_bootstrap_without_public_workspace_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as workspace_dir:
+            home_root = Path(home_dir)
+            workspace_root = Path(workspace_dir)
+
+            install_host_assets(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home_root, language_directory="CN")
+            install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home_root)
+
+            doctor_payload = build_doctor_payload(home_root=home_root, workspace_root=workspace_root)
+            workspace_check = next(
+                check
+                for check in doctor_payload["checks"]
+                if check["host_id"] == "codex" and check["check_id"] == "workspace_bundle_manifest"
+            )
+
+            self.assertEqual(workspace_check["reason_code"], "MISSING_BUNDLE")
+            self.assertIn("Trigger Sopify there to bootstrap on demand", workspace_check["recommendation"])
+            self.assertNotIn("--workspace", workspace_check["recommendation"])
+
     def test_status_and_doctor_surface_partial_bundle_damage_as_replace_required(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as workspace_dir:
             home_root = Path(home_dir)
@@ -509,11 +534,10 @@ class StatusDoctorContractTests(unittest.TestCase):
                 for check in doctor_payload["checks"]
                 if check["host_id"] == "codex" and check["check_id"] == "workspace_bundle_manifest"
             )
-            self.assertEqual(workspace_check["status"], "fail")
-            self.assertEqual(workspace_check["reason_code"], "MISSING_REQUIRED_FILE")
-            self.assertNotIn("B1 compatibility phase", workspace_check["recommendation"])
-            self.assertIn("Workspace bundle is missing required files", workspace_check["recommendation"])
-            self.assertIn("scripts/runtime_gate.py", workspace_check["recommendation"])
+            self.assertEqual(workspace_check["status"], "pass")
+            self.assertEqual(workspace_check["reason_code"], "STUB_SELECTED")
+            self.assertIn("NON_GIT_WORKSPACE", workspace_check["evidence"])
+            self.assertNotIn("recommendation", workspace_check)
 
     def test_status_cli_json_output_contains_hosts_and_workspace_state(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as workspace_dir:

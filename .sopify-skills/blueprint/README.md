@@ -1,7 +1,7 @@
-# 蓝图索引
+# 项目蓝图索引
 
 状态: L3 history-ready
-本文定位: 作为 blueprint 入口页，只保留状态、当前目标、当前焦点与阅读入口，不展开正文。
+维护方式: Sopify 托管自动区块；本页只保留状态、当前目标、当前焦点与阅读入口。
 
 ## 当前目标
 
@@ -21,9 +21,9 @@
 
 <!-- sopify:auto:read-next:start -->
 - [项目技术约定](../project.md)
-- [蓝图背景与目标](./background.md)
-- [蓝图架构与契约](./design.md)
-- [蓝图路线图与待办](./tasks.md)
+- [蓝图背景](./background.md)
+- [蓝图设计](./design.md)
+- [蓝图任务](./tasks.md)
 - [Skill 标准对齐蓝图](./skill-standards-refactor.md)
 - [变更历史](../history/index.md)
 - 最近归档：`../history/2026-03/20260327_hotfix`

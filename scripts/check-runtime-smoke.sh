@@ -31,6 +31,7 @@ fi
 
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/sopify-runtime-smoke.XXXXXX")"
 trap 'rm -rf "$WORK_DIR"' EXIT
+mkdir -p "$WORK_DIR/.git"
 
 MANIFEST_FILE="$BUNDLE_ROOT/manifest.json"
 if [[ ! -f "$MANIFEST_FILE" ]]; then
@@ -99,6 +100,7 @@ BLUEPRINT_TASKS="$WORK_DIR/.sopify-skills/blueprint/tasks.md"
 PREFERENCES_FILE="$WORK_DIR/.sopify-skills/user/preferences.md"
 HISTORY_INDEX="$WORK_DIR/.sopify-skills/history/index.md"
 WIKI_OVERVIEW="$WORK_DIR/.sopify-skills/wiki/overview.md"
+WORKSPACE_STUB_MANIFEST="$WORK_DIR/.sopify-runtime/manifest.json"
 
 if [[ ! -d "$PLAN_DIR" ]]; then
   echo "Smoke check failed: missing plan directory: $PLAN_DIR" >&2
@@ -183,8 +185,31 @@ if ! grep -q '"entry_guard"' "$MANIFEST_FILE"; then
   exit 1
 fi
 
+# This assertion targets the selected bundle manifest at $BUNDLE_ROOT. The
+# workspace stub validated later must stay thin and must not duplicate helper
+# discovery fields.
 if ! grep -q '"runtime_gate_entry": "scripts/runtime_gate.py"' "$MANIFEST_FILE"; then
   echo "Smoke check failed: manifest is missing limits.runtime_gate_entry: $MANIFEST_FILE" >&2
+  exit 1
+fi
+
+if [[ ! -f "$WORKSPACE_STUB_MANIFEST" ]]; then
+  echo "Smoke check failed: missing workspace stub manifest: $WORKSPACE_STUB_MANIFEST" >&2
+  exit 1
+fi
+
+if ! grep -q '"stub_version": "1"' "$WORKSPACE_STUB_MANIFEST"; then
+  echo "Smoke check failed: workspace stub is missing stub_version: $WORKSPACE_STUB_MANIFEST" >&2
+  exit 1
+fi
+
+if grep -q '"runtime_gate_entry":' "$WORKSPACE_STUB_MANIFEST"; then
+  echo "Smoke check failed: workspace stub unexpectedly carries runtime_gate_entry: $WORKSPACE_STUB_MANIFEST" >&2
+  exit 1
+fi
+
+if grep -q '"preferences_preload_entry":' "$WORKSPACE_STUB_MANIFEST"; then
+  echo "Smoke check failed: workspace stub unexpectedly carries preferences_preload_entry: $WORKSPACE_STUB_MANIFEST" >&2
   exit 1
 fi
 
@@ -214,6 +239,18 @@ fi
 
 if [[ "$GATE_OUTPUT" != *'"allowed_response_mode": "normal_runtime_followup"'* ]]; then
   echo "Smoke check failed: runtime gate returned unexpected response mode." >&2
+  printf '%s\n' "$GATE_OUTPUT" >&2
+  exit 1
+fi
+
+if [[ "$GATE_OUTPUT" != *'"runtime_gate_entry": "scripts/runtime_gate.py"'* ]]; then
+  echo "Smoke check failed: runtime gate did not project runtime_gate_entry from the selected bundle." >&2
+  printf '%s\n' "$GATE_OUTPUT" >&2
+  exit 1
+fi
+
+if [[ "$GATE_OUTPUT" != *'"preferences_preload_entry": "scripts/preferences_preload_runtime.py"'* ]]; then
+  echo "Smoke check failed: runtime gate did not project preferences_preload_entry from the selected bundle." >&2
   printf '%s\n' "$GATE_OUTPUT" >&2
   exit 1
 fi

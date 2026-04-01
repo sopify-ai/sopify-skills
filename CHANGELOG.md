@@ -6,6 +6,53 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-04-01.110138] - 2026-04-01
+
+### Docs
+
+- Refined public documentation:
+  - `CONTRIBUTING_CN.md`
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/gate.py`
+  - `runtime/workspace_preflight.py`
+
+### Scripts
+
+- Adjusted maintenance scripts:
+  - `scripts/check-prompt-runtime-gate-smoke.py`
+  - `scripts/check-runtime-smoke.sh`
+  - `scripts/install_sopify.py`
+  - `scripts/runtime_gate.py`
+
+### Skills
+
+- Synced prompt-layer skills:
+  - `Claude/Skills/CN/CLAUDE.md`
+  - `Claude/Skills/EN/CLAUDE.md`
+  - `Codex/Skills/CN/AGENTS.md`
+  - `Codex/Skills/EN/AGENTS.md`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_distribution.py`
+  - `tests/test_installer.py`
+  - `tests/test_installer_status_doctor.py`
+  - `tests/test_runtime_gate.py`
+
+### Changed
+
+- Updated project files:
+  - `install.ps1`
+  - `install.sh`
+  - `installer/bootstrap_workspace.py`
+  - `installer/distribution.py`
+  - `installer/inspection.py`
+  - `installer/payload.py`
+
 ## [2026-03-31.154241] - 2026-03-31
 
 ### Scripts

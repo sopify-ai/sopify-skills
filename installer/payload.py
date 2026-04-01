@@ -90,6 +90,12 @@ def run_workspace_bootstrap(payload_root: Path, workspace_root: Path) -> Bootstr
         raise InstallError(f"Workspace bootstrap produced invalid output: {details}") from exc
 
     result = BootstrapResult.from_dict(payload)
+    if result.reason_code == "ROOT_CONFIRM_REQUIRED":
+        raise InstallError(
+            "Workspace prewarm requires explicit activation-root selection for this nested repository path. "
+            "The internal installer `--workspace` flow does not handle that choice; omit `--workspace` and let "
+            "runtime gate ask whether to enable the current directory or the repository root on first project trigger."
+        )
     if completed.returncode != 0 or result.action == "failed":
         details = result.message or completed.stderr.strip() or stdout or "unknown bootstrap failure"
         raise InstallError(f"Workspace bootstrap failed: {details}")

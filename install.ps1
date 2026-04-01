@@ -9,14 +9,14 @@ $SourceRef = "main"
 
 function Show-Usage {
   @"
-Usage: install.ps1 [--target <host:lang>] [--workspace <path>] [--ref <tag-or-branch>]
+Usage: install.ps1 [--target <host:lang>] [--ref <tag-or-branch>]
 
 Thin Sopify installer entrypoint.
 
 Options:
   --target <host:lang>   Install target. Required in non-interactive mode.
-  --workspace <path>     Optional project directory to prewarm with `.sopify-runtime/`.
   --ref <tag-or-branch>  Optional source override. Expert / maintainer use only.
+  --workspace <path>     Internal-only project prewarm path. Default user flow bootstraps on first project trigger.
   -h, --help             Show this help message.
 "@
 }

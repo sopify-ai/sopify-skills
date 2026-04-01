@@ -52,8 +52,11 @@ archive_ready: false
 - [x] 0.B.7 按已冻结规则落实 brake layer 的最小覆盖面：`不要改 / 先分析 / 只解释 / 不写文件 / explain-only` 等高确定性表达优先阻断写入意图
 - [x] 0.B.8 按已冻结规则落 `monorepo` 首次激活默认 root 逻辑：`显式 root 指定 > 最近的有效 ancestor marker > 当前 cwd`；`sopify.config.yaml` 不作为上层复用信号；向上 walk 命中的第一个 ancestor marker 只有通过最低有效性才允许复用，若最低有效性失败则立即停止并 `fail-closed` 回退 `cwd`；`repo-root` 级激活必须显式指定
 - [x] 0.B.9 按已冻结边界落实 marker 最低有效性：仅用于 root 选择，定义为 `JSON 可解析 + schema_version 存在`，不提前承担 `preflight / validate` 的 stub 健康度校验
-- [ ] 0.B.10 按已冻结降级策略落 `readonly / non-interactive / non-git / monorepo 歧义` 的 `confirm_bootstrap` 回退条件：不得卡在确认、不得 silent activation、不得静默写到错误 root
+- [x] 0.B.10 按已冻结降级策略落 `readonly / non-interactive / non-git / monorepo 歧义` 的 `confirm_bootstrap` 回退条件：不得卡在确认、不得 silent activation、不得静默写到错误 root
   进展记录：part1 已收口 `explicit_allow / blocked_command / no_write_consult / brake_layer_blocked` 四类首次写入前置判定，并把 `activation_root / requested_root / payload_root / host_id` 贯通到 `runtime_gate -> workspace_preflight -> bootstrap helper`。`confirm_bootstrap` checkpoint 与 `readonly / non-interactive` 回退仍留在后续切片，不在本次 part1 收口内。
+  进展更新：part2 已补 `root_confirm_required / readonly / non_interactive` 三类 typed 首写阻断，当前通过 `bootstrap helper -> workspace_preflight -> runtime_gate` 稳定返回独立 reason code；`readonly` 场景下 gate receipt 改为 best-effort，避免只读目录再次触发写 receipt 崩溃。
+  冻结补充：`non-git` 只在首次激活写入前作为 `confirm_bootstrap` 触发原因之一；确认成功后回到普通成功路径，不抬升为默认主码，只在 warning/evidence 中暴露 `non_git_workspace` 与 `ignore_mode = noop`。
+  进展更新：当前已按 B1 最小实现把 `non-git` 首写确认收敛为“`~go / ~go plan` 先阻断并返回 `confirm_bootstrap_required`，显式 `~go init` 或 installer 直装流再继续写入”；写入成功后仍回到 `stub_selected + evidence(non_git_workspace, ignore_mode=noop)`，未引入新的 runtime checkpoint 状态机。
   评审记录：`preflight block` 回合下的 receipt/state fallback 路径目前固定为 `.sopify-skills/...`，作为 pre-config fail-safe contract 明确保留；本轮不追随 custom `plan.directory`，避免 block 分支重新依赖 config。
   评审记录：payload manifest 存在但 JSON 非法/非 object 时，doctor 侧当前仍统一折叠为 `MISSING_REQUIRED_FILE`；已评审为 diagnostics debt，后续在 reason-code matrix 阶段细化，不作为当前阻断项。
 
@@ -62,9 +65,13 @@ archive_ready: false
 - [ ] 1.2 按已冻结 contract 落 `ignore_mode = exclude | gitignore | noop`：git 默认 `.git/info/exclude`，显式 commit-lock 才写 `.gitignore`，non-git visible `noop`
 - [ ] 1.3 设计 `.git/info/exclude` 写入策略：优先使用 `BEGIN/END sopify-managed` block 承载 Sopify 条目，best-effort 幂等追加，不覆盖用户自定义条目，不以文件锁或严格去重为前提
 - [ ] 1.4 按 bootstrap-time explicit choice 落 commit-lock / `ignore_mode`：写入 thin stub、保持 sticky workspace policy、仅允许显式 re-bootstrap / update 切换；v1 至少对 Sopify 可安全归属的旧 managed block / 已知条目做确定性 reconciliation，超出安全判定范围的残留给出可见提示与手动 remediation，不要求完整 clean/deactivate
-- [ ] 1.5 设计 non-git repository 的 reason code、可见提示与 fail-open 行为
+- [x] 1.5 设计 non-git repository 的 `confirm_bootstrap` 提示、warning/evidence 暴露与 fail-open 行为；`non_git_workspace` 不作为默认成功/失败主码
+  进展记录：当前 non-git 首写在 `bootstrap helper -> workspace_preflight -> runtime_gate` 上统一返回 `confirm_bootstrap_required`，消息固定为“当前目录不是 Git 仓库 / 继续启用后不会自动写入忽略规则”的用户向口径；`~go init` 与 installer 直装流作为显式确认入口放行，写入成功后只通过 `evidence` 暴露 `non_git_workspace + ignore_mode=noop`。
 - [ ] 1.6 明确 bootstrap 输出需要暴露的 observability 字段：ignore_target、ignore_mode、reason_code、workspace_kind、target_root、root_resolution_source；并暴露仅覆盖 `thin stub + managed block` 的手动停用路径
-- [ ] 1.7 明确 `confirm_bootstrap` 文案与 direct-write 提示：至少暴露 `target_root / root_resolution_source / fallback_reason`，且不暗示会自动清理 `.sopify-skills/state/` 或知识库
+  进展记录：当前 bootstrap 输出已稳定暴露 `ignore_mode / ignore_target / reason_code / activation_root / requested_root / root_resolution_source / fallback_reason`，并通过 `evidence` 补出 `non_git_workspace / ignore_mode=noop / root_reuse_ancestor_marker / invalid_ancestor_marker`；`workspace_kind` 命名与手动停用路径仍待后续切片统一。
+- [ ] 1.7 明确 `confirm_bootstrap` 文案与 direct-write 提示：至少暴露 `target_root / root_resolution_source / fallback_reason`，且不暗示会自动清理 `.sopify-skills/state/` 或知识库；其中 non-git 写入前确认标题固定为“当前目录不是 Git 仓库”，原因固定为“继续启用后不会自动写入忽略规则。”
+  进展记录：当前 helper / gate 已稳定暴露 `activation_root(requested target) / requested_root / root_resolution_source / fallback_reason`，且 non-git 阻断消息已落“当前目录不是 Git 仓库。继续启用后不会自动写入忽略规则。使用 ~go init 确认，或先初始化 Git 后重试。”；若后续需要单独拆 title/reason 字段，再在 host checkpoint contract 中补。
+  进展更新：`ROOT_CONFIRM_REQUIRED` 的恢复提示已收口为“默认推荐当前目录、备选仓库根目录、允许手动指定其他目录，并以显式 `activation_root` 重试”；同时保留 root 选择优先于 non-git 确认的顺序，避免在 monorepo 子目录里静默写错 root。
 
 ### 当前推荐推进顺序（2026-03-30 评审结论）
 1. `4.2 -> 4.6`
@@ -123,6 +130,7 @@ archive_ready: false
   进展记录：已保留 legacy `bundle/manifest.json` 的显式 exact-pin 兼容路径，但仅在无 `bundles_dir` 的旧布局下生效；`status / doctor` 新增回归覆盖 versioned layout 缺失 `active_version` 时 fail-closed，而旧 `bundle/` 继续以 `legacy_layout / LEGACY_FALLBACK_SELECTED` 暴露为兼容来源。
 - [x] 4.7 确保 payload index 升级后，installer / doctor / status / smoke 消费的是同一套 reason code 与 source-kind 词汇
   进展记录：已冻结并接通 `PAYLOAD_BUNDLE_READY / GLOBAL_BUNDLE_MISSING / GLOBAL_BUNDLE_INCOMPATIBLE / GLOBAL_INDEX_CORRUPTED / LEGACY_FALLBACK_SELECTED` 与 `global_active / legacy_layout / unresolved` 词汇，installer、status、doctor、distribution、smoke 与对应单测已共用同一 contract。
+  进展更新：公开 prompt、`CONTRIBUTING_CN.md` 与 `scripts/check-runtime-smoke.sh` 已同步改成 thin-stub + selected global bundle / workspace preflight 模型；bundle manifest 继续承载 `limits.*`，workspace stub 显式保持无 helper 入口，smoke 改为同时校验这两层职责不混淆。
 
 ## 4.A | CLI Rendering Layer
 - [ ] 4.A.1 冻结 CLI 渲染适配层边界：只消费 `primary_code + action_level + evidence` 与 `violations[]`，不反向定义新的机器字段
@@ -132,17 +140,22 @@ archive_ready: false
 - [ ] 4.A.5 为终端渲染补示例或快照，覆盖“普通用户视图”和“调试原始视图”两层输出
 
 ## 5. P4 | Compatibility / Observability / Tests
-说明：`5.1 / 5.2` 是 `5.3 / 5.A.*` 的前置物；未补齐 `primary_code` 矩阵与 hint contract 前，不得启动 P4 测试。
-- [ ] 5.1 定义完整 `primary_code` 矩阵：`stub_selected / stub_invalid / global_bundle_missing / global_bundle_incompatible / global_index_corrupted / legacy_fallback_selected / legacy_fallback_blocked / host_mismatch / ingress_contract_invalid / non_git_workspace / ignore_written / root_reuse_ancestor_marker / invalid_ancestor_marker / root_confirm_required`
-- [ ] 5.2 将 `primary_code + action_level + typed evidence` 接入 bootstrap、preflight、validate、inspection、status、doctor 与 CLI 渲染层的输出面，并冻结 reason-code-specific 的用户可见 hint 分类
-- [ ] 5.3 补回归测试矩阵：new workspace、legacy vendored workspace、dual-host same repo、non-git workspace、commit-lock mode、monorepo nearest-ancestor-marker reuse、monorepo invalid-nearest-ancestor-marker fail-closed、monorepo explicit-root override；其中 dual-host same repo 只断言 `host_mismatch + typed evidence`，不绑定提示文案模板
+说明：`5.1 / 5.2` 是 `5.3 / 5.A.*` 的前置物；未补齐默认主码集合、diagnostic-only 集合与 hint contract 前，不得启动 P4 测试。
+- [x] 5.1 冻结结果码分层：`default primary codes = stub_selected / stub_invalid / global_bundle_missing / global_bundle_incompatible / global_index_corrupted / legacy_fallback_selected / host_mismatch / ingress_contract_invalid / root_confirm_required / readonly / non_interactive`；`diagnostic-only identifiers（仅经 evidence / warning surface 暴露，不作为默认首屏主码） = non_git_workspace / ignore_written / root_reuse_ancestor_marker / invalid_ancestor_marker / legacy_fallback_blocked`
+  进展记录：文档矩阵已冻结；当前实现已把 `stub_selected / stub_invalid / global bundle failures / legacy_fallback_selected / root_confirm_required / readonly / non_interactive` 接入 bootstrap / preflight / inspection 的主结果面，并把 `non_git_workspace / root_reuse_ancestor_marker / invalid_ancestor_marker` 压回 evidence。
+- [ ] 5.2 将 `default primary codes + action_level + typed evidence` 接入 bootstrap、preflight、validate、inspection、status、doctor 与 CLI 渲染层的输出面，并为 `diagnostic-only identifiers` 冻结 evidence / warning surface 与 reason-code-specific 的用户可见 hint 分类；不新增新的稳定机器字段
+  进展记录：当前已接入 `bootstrap / workspace_preflight / runtime_gate / inspection / doctor tests` 的主结果与 evidence 语义，并把 `stub_invalid / global bundle failures` 的 recommendation 文案收成更直接的用户口径；`action_level` 统一命名与剩余 `status / doctor` 终端文案细化仍待后续切片补齐。
+- [ ] 5.3 补回归测试矩阵：new workspace、legacy vendored workspace、dual-host same repo、non-git workspace、commit-lock mode、monorepo nearest-ancestor-marker reuse、monorepo invalid-nearest-ancestor-marker fail-closed、monorepo explicit-root override；其中 dual-host same repo 只断言 `host_mismatch + typed evidence`，不绑定提示文案模板；non-git workspace 断言“写入前触发 `confirm_bootstrap` + 写入后只在 evidence / warning 中暴露 `non_git_workspace + ignore_mode=noop`”，不要求其成为默认首屏主码
+  进展记录：当前已补 non-git 行的两段式回归：`~go plan` 在非 Git 首写时阻断并返回 `confirm_bootstrap_required`，`~go init` 成功后回到 `stub_selected + non_git_workspace/ignore_mode=noop`；其余 dual-host / commit-lock 等行仍待补齐。
 - [ ] 5.4 补 smoke 验证矩阵：一次安装、bootstrap、global bundle 解析、fallback visibility、默认入口不变
 - [ ] 5.5 更新迁移说明：新仓库、已 bootstrap 仓库、旧 vendored 仓库分别怎么过渡，并确保迁移说明与 `doctor / status` 的 actionable hint 一致；本轮仅补可见性与说明，不提供一键迁移器
 - [ ] 5.6 更新安装输出与自检脚本，确保用户能看到“当前走的是 stub/global/legacy 哪条路径”
-- [ ] 5.7 （待确认是否纳入本轮）为 installer 入口补 Python 最低版本 preflight：覆盖 `install.sh / scripts/install-sopify.sh / scripts/install_sopify.py` 三入口，在 `Python < 3.11` 时稳定输出明确的 `phase / reason_code / detail / next_step`，避免在导入 `StrEnum` 前直接抛原始 traceback；若确认纳入，本任务同时要求补最小回归验证
+  进展记录：已冻结 installer surface 收口方向：`--workspace` 保留 internal / maintainer prewarm，不作为 B1 默认用户路径；若要正式支持 monorepo `activation_root` / root confirm UX，放到 post-B1 单独立项。
+- [x] 5.7 已确定移出本轮：installer 三入口 Python 最低版本 preflight 不纳入当前 B1 主线与 `feature/plan-b1-bootstrap-policy` 分支策略；后续如需推进，单独立项并补对应回归
 
 ## 5.A 验证分层
-- [ ] 5.A.1 单测先覆盖 contract 与判定器：stub validity、payload index、host-aware resolution、fallback gating、`ingress_contract_invalid` 的 `violations[]` 顺序与短路规则，以及 CLI 渲染层的字段级映射；dual-host 相关断言只覆盖 `host_mismatch + typed evidence`，不覆盖提示文案模板
+- [ ] 5.A.1 单测先覆盖 contract 与判定器：stub validity、payload index、host-aware resolution、fallback gating、`ingress_contract_invalid` 的 `violations[]` 顺序与短路规则，以及 CLI 渲染层的字段级映射；dual-host 相关断言只覆盖 `host_mismatch + typed evidence`，不覆盖提示文案模板；non-git 相关断言只覆盖写入前 `confirm_bootstrap` 触发原因与写入后 `evidence / warning` 暴露，不把 `non_git_workspace` 绑定成默认主码
+  进展记录：本轮已补 `stub_selected / stub_invalid` 语义回归、legacy fallback 主链、`root_confirm_required / readonly / non_interactive` 首写阻断、以及 non-git 的“写入前 `confirm_bootstrap_required` / 写入后只走 `evidence`”双段式断言；`ingress_contract_invalid` 的 `violations[]` 和 dual-host `host_mismatch` 仍待后续切片补齐。
 - [ ] 5.A.2 集成测试覆盖 bootstrap -> preflight -> gate entry 的主链，不允许只测单函数
 - [ ] 5.A.3 smoke 最后验证“一次安装 + 多仓触发 bootstrap + 默认入口不变”
 
@@ -166,3 +179,6 @@ archive_ready: false
   - 目标是为旧 vendored workspace 提供可确认的一键升级路径，但不属于当前 B1 交付门
 - Bundle prune
   - 目标是清理未被任何 thin stub 引用的历史 `bundles/<version>/`，但不属于当前 B1 交付门
+- Installer Python preflight
+  - 原 `5.7`；覆盖 `install.sh / scripts/install-sopify.sh / scripts/install_sopify.py` 的 Python 最低版本 preflight 与最小回归
+  - 不纳入当前 B1 主线与 `feature/plan-b1-bootstrap-policy` 分支策略，后续单独立项处理

@@ -134,7 +134,38 @@ class DistributionFacadeTests(unittest.TestCase):
             self.assertEqual(report.status_payload["hosts"][0]["state"]["workspace_bundle_healthy"], "yes")
             rendered = render_distribution_result(report)
             self.assertIn(f"workspace: pre-warmed at {workspace_root.resolve()}", rendered)
-            self.assertIn("workspace bundle: pass (WORKSPACE_BUNDLE_READY)", rendered)
+            self.assertIn("workspace bundle: pass (STUB_SELECTED)", rendered)
+
+    def test_distribution_install_rejects_ambiguous_nested_workspace_prewarm(self) -> None:
+        with tempfile.TemporaryDirectory() as home_dir, tempfile.TemporaryDirectory() as repo_dir:
+            home_root = Path(home_dir)
+            repo_root = Path(repo_dir)
+            workspace_root = repo_root / "packages" / "feature"
+            workspace_root.mkdir(parents=True, exist_ok=True)
+            (repo_root / ".git").mkdir(parents=True, exist_ok=True)
+            request = DistributionRequest(
+                target="codex:zh-CN",
+                workspace=str(workspace_root),
+                ref_override=None,
+                interactive=False,
+                source_channel="repo-local",
+                source_metadata=DistributionSourceMetadata(
+                    resolved_ref="working-tree",
+                    asset_name="scripts/install_sopify.py",
+                ),
+            )
+
+            with self.assertRaises(DistributionError) as context:
+                run_distribution_install(
+                    request=request,
+                    repo_root=REPO_ROOT,
+                    home_root=home_root,
+                    install_executor=run_install,
+                )
+
+            self.assertEqual(context.exception.reason_code, "WORKSPACE_PREWARM_ROOT_AMBIGUOUS")
+            self.assertIn("omit `--workspace`", context.exception.detail.lower())
+            self.assertIn("choose whether to enable the current directory or the repository root", context.exception.next_step)
 
     def test_non_interactive_distribution_install_requires_target(self) -> None:
         request = DistributionRequest(
@@ -182,6 +213,7 @@ class DistributionFacadeTests(unittest.TestCase):
                 )
 
             self.assertEqual(context.exception.reason_code, "WORKSPACE_NOT_DIRECTORY")
+            self.assertIn("internal prewarm flag", context.exception.next_step)
 
     def test_interactive_distribution_install_selects_registry_target(self) -> None:
         with tempfile.TemporaryDirectory() as home_dir:
@@ -235,17 +267,25 @@ class DistributionFacadeTests(unittest.TestCase):
 
 
 class ReleaseAssetRenderingTests(unittest.TestCase):
-    def test_root_install_scripts_share_public_contract_surface(self) -> None:
+    def test_root_install_scripts_keep_internal_workspace_flag_out_of_primary_usage(self) -> None:
         install_sh = (REPO_ROOT / "install.sh").read_text(encoding="utf-8")
         install_ps1 = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")
 
-        for flag in ("--target", "--workspace", "--ref"):
+        for flag in ("--target", "--ref"):
             self.assertIn(flag, install_sh)
             self.assertIn(flag, install_ps1)
+        self.assertIn("--workspace", install_sh)
+        self.assertIn("--workspace", install_ps1)
         self.assertIn("scripts/install_sopify.py", install_sh)
         self.assertIn("scripts/install_sopify.py", install_ps1)
         self.assertIn("--source-channel", install_sh)
         self.assertIn("--source-channel", install_ps1)
+        self.assertIn("Usage: install.sh [--target <host:lang>] [--ref <tag-or-branch>]", install_sh)
+        self.assertIn("Usage: install.ps1 [--target <host:lang>] [--ref <tag-or-branch>]", install_ps1)
+        self.assertIn("Internal-only project prewarm path", install_sh)
+        self.assertIn("Internal-only project prewarm path", install_ps1)
+        self.assertIn("first project trigger", install_sh)
+        self.assertIn("first project trigger", install_ps1)
 
     def test_powershell_installer_prefers_python3_probe(self) -> None:
         install_ps1 = (REPO_ROOT / "install.ps1").read_text(encoding="utf-8")

@@ -278,14 +278,21 @@ def _map_install_error(exc: InstallError) -> DistributionError:
             phase="input",
             reason_code="WORKSPACE_NOT_FOUND",
             detail=detail,
-            next_step="Pass an existing project directory to `--workspace`, or omit the flag to install without prewarming.",
+            next_step="Pass an existing project directory to `--workspace`, or omit the internal prewarm flag and bootstrap on first project trigger instead.",
         )
     if detail.startswith("Workspace is not a directory:"):
         return DistributionError(
             phase="input",
             reason_code="WORKSPACE_NOT_DIRECTORY",
             detail=detail,
-            next_step="Pass a project directory to `--workspace`, or omit the flag to install without prewarming.",
+            next_step="Pass a project directory to `--workspace`, or omit the internal prewarm flag and bootstrap on first project trigger instead.",
+        )
+    if detail.startswith("Workspace prewarm requires explicit activation-root selection"):
+        return DistributionError(
+            phase="install",
+            reason_code="WORKSPACE_PREWARM_ROOT_AMBIGUOUS",
+            detail=detail,
+            next_step="Omit `--workspace` and trigger Sopify inside that project instead. On first activation, choose whether to enable the current directory or the repository root.",
         )
     if detail.startswith("Missing source"):
         return DistributionError(
@@ -313,7 +320,7 @@ def _map_install_error(exc: InstallError) -> DistributionError:
             phase="install",
             reason_code="WORKSPACE_BUNDLE_VERIFICATION_FAILED",
             detail=detail,
-            next_step="Rerun the installer with the same `--workspace`, or trigger Sopify in that project to bootstrap the workspace bundle again.",
+            next_step="Trigger Sopify in that project to bootstrap on demand. If the issue persists, refresh the local install and retry.",
         )
     if detail.startswith("Missing bundle smoke script:"):
         return DistributionError(

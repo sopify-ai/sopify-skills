@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 from itertools import zip_longest
+import os
 from pathlib import Path
 import re
 import shutil
@@ -47,6 +48,15 @@ _PRERELEASE_RANK = {"dev": -4, "alpha": -3, "beta": -2, "rc": -1}
 _WORKSPACE_STUB_REQUIRED_CAPABILITIES = ("runtime_gate", "preferences_preload")
 _WORKSPACE_STUB_LOCATOR_MODES = {"global_first", "global_only"}
 _WORKSPACE_STUB_IGNORE_MODES = {"exclude", "gitignore", "noop"}
+REASON_STUB_SELECTED = "STUB_SELECTED"
+REASON_STUB_INVALID = "STUB_INVALID"
+REASON_CONFIRM_BOOTSTRAP_REQUIRED = "CONFIRM_BOOTSTRAP_REQUIRED"
+REASON_ROOT_CONFIRM_REQUIRED = "ROOT_CONFIRM_REQUIRED"
+REASON_READONLY = "READONLY"
+REASON_NON_INTERACTIVE = "NON_INTERACTIVE"
+DIAGNOSTIC_NON_GIT_WORKSPACE = "NON_GIT_WORKSPACE"
+DIAGNOSTIC_ROOT_REUSE_ANCESTOR_MARKER = "ROOT_REUSE_ANCESTOR_MARKER"
+DIAGNOSTIC_INVALID_ANCESTOR_MARKER = "INVALID_ANCESTOR_MARKER"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -56,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--request", default="", help="Raw user request routed through host ingress.")
     parser.add_argument("--requested-root", default=None, help="Optional host-requested root for observability.")
     parser.add_argument("--host-id", default=None, help="Optional host id for observability.")
+    parser.add_argument(
+        "--interaction-mode",
+        choices=("interactive", "non_interactive"),
+        default=None,
+        help="Optional host-provided interaction mode for first-write policy.",
+    )
     return parser
 
 
@@ -70,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             request_text=args.request,
             requested_root=Path(args.requested_root).expanduser().resolve() if args.requested_root else None,
             host_id=args.host_id,
+            interaction_mode=args.interaction_mode,
         )
     except Exception as exc:  # pragma: no cover - defensive CLI guard
         print(
@@ -101,6 +118,7 @@ def bootstrap_workspace(
     request_text: str = "",
     requested_root: Path | None = None,
     host_id: str | None = None,
+    interaction_mode: str | None = None,
 ) -> dict[str, Any]:
     if not workspace_root.exists():
         raise ValueError(f"Workspace does not exist: {workspace_root}")
@@ -147,6 +165,16 @@ def bootstrap_workspace(
         global_message=global_message,
     )
     to_version = _string_or_none(bundle_manifest.get("bundle_version"))
+    current_ignore_mode = _default_ignore_mode(resolved_activation_root)
+    if current_manifest_path.is_file() and current_manifest:
+        try:
+            normalized_manifest = _normalize_workspace_stub_contract(
+                current_manifest=current_manifest,
+                workspace_root=resolved_activation_root,
+            )
+        except ValueError:
+            normalized_manifest = {}
+        current_ignore_mode = str(normalized_manifest.get("ignore_mode") or current_ignore_mode)
 
     if state in {"READY", "NEWER_THAN_GLOBAL"}:
         return _result(
@@ -164,10 +192,13 @@ def bootstrap_workspace(
             payload_root=payload_root,
             host_id=host_id,
             fallback_reason=fallback_reason,
+            ignore_mode=current_ignore_mode,
         )
 
+    write_authorization_mode = ""
     if state == "MISSING":
         authorization = _authorize_first_workspace_write(request_text)
+        write_authorization_mode = str(authorization["mode"])
         if not authorization["allow_write"]:
             return _result(
                 action="skipped",
@@ -183,8 +214,42 @@ def bootstrap_workspace(
                 root_resolution_source=root_resolution_source,
                 payload_root=payload_root,
                 host_id=host_id,
-                authorization_mode=str(authorization["mode"]),
+                authorization_mode=write_authorization_mode,
                 fallback_reason=fallback_reason,
+                ignore_mode=current_ignore_mode,
+            )
+        write_barrier = _classify_first_write_barrier(
+            workspace_root=workspace_root,
+            activation_root=resolved_activation_root,
+            explicit_activation_root=activation_root,
+            bundle_root=bundle_root,
+            root_resolution_source=root_resolution_source,
+            fallback_reason=fallback_reason,
+            interaction_mode=interaction_mode,
+            ignore_mode=current_ignore_mode,
+            authorization_mode=write_authorization_mode,
+        )
+        if write_barrier is not None:
+            return _result(
+                action="skipped",
+                state=state,
+                reason_code=str(write_barrier["reason_code"]),
+                workspace_root=workspace_root,
+                bundle_root=bundle_root,
+                from_version=from_version,
+                to_version=to_version,
+                message=str(write_barrier["message"]),
+                activation_root=resolved_activation_root,
+                requested_root=requested_root,
+                root_resolution_source=root_resolution_source,
+                payload_root=payload_root,
+                host_id=host_id,
+                authorization_mode=write_authorization_mode,
+                fallback_reason=fallback_reason,
+                ignore_mode=current_ignore_mode,
+                extra_evidence=tuple(str(item) for item in write_barrier.get("evidence") or ()),
+                expose_activation_root=bool(write_barrier.get("expose_activation_root", True)),
+                expose_ignore_mode=bool(write_barrier.get("expose_ignore_mode", True)),
             )
 
     if global_reason_code in {"GLOBAL_BUNDLE_MISSING", "GLOBAL_BUNDLE_INCOMPATIBLE", "GLOBAL_INDEX_CORRUPTED"}:
@@ -203,6 +268,7 @@ def bootstrap_workspace(
             payload_root=payload_root,
             host_id=host_id,
             fallback_reason=fallback_reason,
+            ignore_mode=current_ignore_mode,
         )
 
     if selected_bundle_root is None:
@@ -229,6 +295,7 @@ def bootstrap_workspace(
             payload_root=payload_root,
             host_id=host_id,
             fallback_reason=fallback_reason,
+            ignore_mode=current_ignore_mode,
         )
 
     _write_workspace_stub_overlay(
@@ -237,22 +304,24 @@ def bootstrap_workspace(
         bundle_manifest=bundle_manifest,
     )
     action = "bootstrapped" if state == "MISSING" else "updated"
+    success_ignore_mode = _default_ignore_mode(resolved_activation_root)
     return _result(
         action=action,
         state=state,
-        reason_code=reason_code,
+        reason_code=REASON_STUB_SELECTED,
         workspace_root=workspace_root,
         bundle_root=bundle_root,
         from_version=from_version,
         to_version=to_version,
-        message=message,
+        message="Workspace control-plane stub is enabled and points to the selected global bundle.",
         activation_root=resolved_activation_root,
         requested_root=requested_root,
         root_resolution_source=root_resolution_source,
         payload_root=payload_root,
         host_id=host_id,
-        authorization_mode="explicit_allow" if state == "MISSING" else "",
+        authorization_mode=write_authorization_mode if state == "MISSING" else "",
         fallback_reason=fallback_reason,
+        ignore_mode=success_ignore_mode,
     )
 
 
@@ -262,9 +331,11 @@ _BLOCKED_BOOTSTRAP_COMMAND_PATTERNS = (
     re.compile(r"^~go\s+exec(?:\s|$)", re.IGNORECASE),
     re.compile(r"^~summary(?:\s|$)", re.IGNORECASE),
 )
+_CONFIRM_BOOTSTRAP_COMMAND_PATTERNS = (
+    re.compile(r"^~go\s+init(?:\s|$)", re.IGNORECASE),
+)
 _ALLOWED_BOOTSTRAP_COMMAND_PATTERNS = (
     re.compile(r"^~go\s+plan(?:\s|$)", re.IGNORECASE),
-    re.compile(r"^~go\s+init(?:\s|$)", re.IGNORECASE),
     re.compile(r"^~go(?:\s|$)", re.IGNORECASE),
 )
 _BRAKE_LAYER_PATTERNS = (
@@ -298,6 +369,13 @@ def _authorize_first_workspace_write(request_text: str) -> dict[str, object]:
             "reason_code": "BRAKE_LAYER_BLOCKED",
             "message": "Workspace bootstrap was blocked by an explicit no-write or explain-only request.",
         }
+    if any(pattern.search(text) for pattern in _CONFIRM_BOOTSTRAP_COMMAND_PATTERNS):
+        return {
+            "allow_write": True,
+            "mode": "explicit_confirm",
+            "reason_code": "WORKSPACE_BOOTSTRAP_AUTHORIZED_CONFIRM",
+            "message": "Workspace bootstrap is authorized by the explicit `~go init` confirmation command.",
+        }
     if any(pattern.search(text) for pattern in _ALLOWED_BOOTSTRAP_COMMAND_PATTERNS):
         return {
             "allow_write": True,
@@ -311,6 +389,58 @@ def _authorize_first_workspace_write(request_text: str) -> dict[str, object]:
         "reason_code": "FIRST_WRITE_NOT_AUTHORIZED",
         "message": "Workspace bootstrap requires an explicit `~go`, `~go plan`, or `~go init` command on first write.",
     }
+
+
+def _classify_first_write_barrier(
+    *,
+    workspace_root: Path,
+    activation_root: Path,
+    explicit_activation_root: Path | None,
+    bundle_root: Path,
+    root_resolution_source: str,
+    fallback_reason: str,
+    interaction_mode: str | None,
+    ignore_mode: str,
+    authorization_mode: str,
+) -> dict[str, object] | None:
+    if interaction_mode == "non_interactive":
+        return {
+            "reason_code": REASON_NON_INTERACTIVE,
+            "message": "This is a non-interactive session. Open an interactive session before enabling Sopify here.",
+        }
+
+    if explicit_activation_root is None and root_resolution_source == "cwd" and not fallback_reason:
+        repo_root = _find_git_ancestor_root(workspace_root)
+        if repo_root is not None and repo_root != workspace_root:
+            # Root disambiguation intentionally runs before the non-git confirm.
+            # A nested package may still need a follow-up `~go init` confirm on
+            # the next pass when the caller explicitly chooses a non-git target.
+            return {
+                "reason_code": REASON_ROOT_CONFIRM_REQUIRED,
+                "message": "Sopify needs you to confirm which directory to enable in this repository. Retry with `activation_root` set to the current directory to enable only this package, or to the repository root to enable the whole repo. You may also provide another directory manually.",
+                "expose_activation_root": False,
+                "expose_ignore_mode": False,
+                "evidence": (
+                    f"repo_root={repo_root}",
+                    f"recommended_activation_root={workspace_root}",
+                    f"alternate_activation_root={repo_root}",
+                    "manual_activation_root_allowed=true",
+                ),
+            }
+
+    if not _can_write_bootstrap_target(bundle_root):
+        return {
+            "reason_code": REASON_READONLY,
+            "message": "Sopify cannot enable this directory because it is not writable. Fix permissions and retry.",
+            "evidence": (f"target_root={activation_root}",),
+        }
+
+    if ignore_mode == "noop" and authorization_mode not in {"explicit_confirm", "host_installer_default"}:
+        return {
+            "reason_code": REASON_CONFIRM_BOOTSTRAP_REQUIRED,
+            "message": "Current directory is not a Git repository. Continuing will not add ignore rules automatically. Run `~go init` to confirm, or initialize Git and retry.",
+        }
+    return None
 
 
 def _resolve_activation_root(
@@ -334,6 +464,20 @@ def _resolve_activation_root(
         return (workspace_root, "cwd", "invalid_ancestor_marker")
 
     return (workspace_root, "cwd", "")
+
+
+def _find_git_ancestor_root(workspace_root: Path) -> Path | None:
+    if (workspace_root / ".git").exists():
+        return workspace_root
+    for ancestor in workspace_root.parents:
+        if (ancestor / ".git").exists():
+            return ancestor
+    return None
+
+
+def _can_write_bootstrap_target(bundle_root: Path) -> bool:
+    candidate = bundle_root if bundle_root.exists() else bundle_root.parent
+    return os.access(candidate, os.W_OK | os.X_OK)
 
 
 def _marker_has_minimum_validity(marker_path: Path) -> bool:
@@ -360,8 +504,8 @@ def _classify_workspace_bundle(
     if not current_manifest:
         return (
             "INCOMPATIBLE",
-            "INVALID_WORKSPACE_MANIFEST",
-            "Workspace bundle manifest is unreadable and will be replaced.",
+            REASON_STUB_INVALID,
+            "Workspace stub manifest is unreadable and will be replaced.",
             None,
         )
 
@@ -403,19 +547,10 @@ def _classify_workspace_bundle(
         )
         return (state, reason_code, message, from_version)
 
-    state, reason_code, message = _classify_legacy_workspace_runtime(
-        current_manifest=current_manifest,
-        payload_manifest=payload_manifest,
-        bundle_manifest=bundle_manifest,
-        bundle_root=bundle_root,
-    )
-    if state == "INCOMPATIBLE":
-        return (state, reason_code, message, from_version)
-
     return (
         "READY",
-        "WORKSPACE_BUNDLE_READY",
-        "Workspace stub resolves to a valid global bundle.",
+        REASON_STUB_SELECTED,
+        "Workspace stub resolves to the selected global bundle.",
         from_version,
     )
 
@@ -433,7 +568,7 @@ def _classify_workspace_stub_contract(
     if workspace_schema != expected_schema:
         return (
             "INCOMPATIBLE",
-            "SCHEMA_VERSION_MISMATCH",
+            REASON_STUB_INVALID,
             f"Workspace bundle schema {workspace_schema or '<missing>'} is incompatible with required schema {expected_schema}.",
             {},
         )
@@ -442,11 +577,11 @@ def _classify_workspace_stub_contract(
     except ValueError as exc:
         return (
             "INCOMPATIBLE",
-            "INVALID_WORKSPACE_MANIFEST",
+            REASON_STUB_INVALID,
             str(exc),
             {},
         )
-    return ("READY", "WORKSPACE_MANIFEST_VALID", "Workspace stub satisfies the minimum contract.", normalized_manifest)
+    return ("READY", REASON_STUB_SELECTED, "Sopify is enabled for this project and points to the selected global bundle.", normalized_manifest)
 
 
 def _classify_global_bundle_contract(
@@ -839,7 +974,12 @@ def _result(
     host_id: str | None = None,
     authorization_mode: str = "",
     fallback_reason: str = "",
+    ignore_mode: str = "",
+    extra_evidence: tuple[str, ...] = (),
+    expose_activation_root: bool = True,
+    expose_ignore_mode: bool = True,
 ) -> dict[str, Any]:
+    target_root = activation_root or workspace_root
     payload = {
         "action": action,
         "state": state,
@@ -850,7 +990,7 @@ def _result(
         "to_version": to_version,
         "message": message,
     }
-    if activation_root is not None:
+    if expose_activation_root and activation_root is not None:
         payload["activation_root"] = str(activation_root)
     if requested_root is not None:
         payload["requested_root"] = str(requested_root)
@@ -864,7 +1004,42 @@ def _result(
         payload["authorization_mode"] = authorization_mode
     if fallback_reason:
         payload["fallback_reason"] = fallback_reason
+    effective_ignore_mode = ignore_mode if expose_ignore_mode else ""
+    if effective_ignore_mode:
+        payload["ignore_mode"] = effective_ignore_mode
+        if effective_ignore_mode == "exclude":
+            payload["ignore_target"] = str(target_root / ".git" / "info" / "exclude")
+        elif effective_ignore_mode == "gitignore":
+            payload["ignore_target"] = str(target_root / ".gitignore")
+    evidence = _result_evidence(
+        workspace_root=target_root,
+        ignore_mode=effective_ignore_mode,
+        root_resolution_source=root_resolution_source,
+        fallback_reason=fallback_reason,
+        extra_evidence=extra_evidence,
+    )
+    if evidence:
+        payload["evidence"] = evidence
     return payload
+
+
+def _result_evidence(
+    *,
+    workspace_root: Path,
+    ignore_mode: str,
+    root_resolution_source: str,
+    fallback_reason: str,
+    extra_evidence: tuple[str, ...],
+) -> list[str]:
+    evidence: list[str] = [str(item) for item in extra_evidence if str(item or "").strip()]
+    if root_resolution_source == "ancestor_marker":
+        evidence.append(DIAGNOSTIC_ROOT_REUSE_ANCESTOR_MARKER)
+    if fallback_reason == "invalid_ancestor_marker":
+        evidence.append(DIAGNOSTIC_INVALID_ANCESTOR_MARKER)
+    if ignore_mode == "noop" and not (workspace_root / ".git").exists():
+        evidence.append(DIAGNOSTIC_NON_GIT_WORKSPACE)
+        evidence.append("ignore_mode=noop")
+    return evidence
 
 
 def _string_or_none(value: object) -> str | None:

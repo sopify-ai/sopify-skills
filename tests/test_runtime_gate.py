@@ -319,7 +319,166 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertFalse((workspace / ".sopify-skills" / "state" / "sessions" / "session-non-explicit").exists())
             self.assertTrue((workspace / ".sopify-skills" / "state" / CURRENT_GATE_RECEIPT_FILENAME).exists())
 
-    def test_gate_preflight_bootstraps_missing_workspace_for_go_plan(self) -> None:
+    def test_gate_preflight_requires_explicit_root_when_first_write_root_is_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            repo_root = temp_root / "repo"
+            workspace = repo_root / "packages" / "feature"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (repo_root / ".git").mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                session_id="session-root-confirm",
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["preflight"]["reason_code"], "ROOT_CONFIRM_REQUIRED")
+            self.assertEqual(result["allowed_response_mode"], CHECKPOINT_ONLY)
+            self.assertIn(f"repo_root={repo_root.resolve()}", result["preflight"]["evidence"])
+            self.assertIn(f"recommended_activation_root={workspace.resolve()}", result["preflight"]["evidence"])
+            self.assertIn(f"alternate_activation_root={repo_root.resolve()}", result["preflight"]["evidence"])
+            self.assertIn("manual_activation_root_allowed=true", result["preflight"]["evidence"])
+            self.assertIn("activation_root", result["message"])
+            self.assertNotIn("activation_root", result["preflight"])
+            self.assertNotIn("ignore_mode", result["preflight"])
+            self.assertNotIn("NON_GIT_WORKSPACE", result["preflight"]["evidence"])
+            self.assertNotIn("ignore_mode=noop", result["preflight"]["evidence"])
+            self.assertEqual(result["error_code"], "workspace_first_write_blocked")
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_root_confirm_recovers_when_repo_root_is_explicitly_selected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            repo_root = temp_root / "repo"
+            workspace = repo_root / "packages" / "feature"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (repo_root / ".git").mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                activation_root=repo_root,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                session_id="session-root-explicit-repo",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["preflight"]["reason_code"], "STUB_SELECTED")
+            self.assertEqual(result["preflight"]["activation_root"], str(repo_root.resolve()))
+            self.assertEqual(result["preflight"]["requested_root"], str(workspace.resolve()))
+            self.assertTrue((repo_root / ".sopify-runtime" / "manifest.json").exists())
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_root_confirm_current_directory_flows_into_non_git_confirm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            repo_root = temp_root / "repo"
+            workspace = repo_root / "packages" / "feature"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (repo_root / ".git").mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                activation_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                session_id="session-root-explicit-cwd",
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["preflight"]["reason_code"], "CONFIRM_BOOTSTRAP_REQUIRED")
+            self.assertEqual(result["preflight"]["activation_root"], str(workspace.resolve()))
+            self.assertIn("NON_GIT_WORKSPACE", result["preflight"]["evidence"])
+            self.assertIn("ignore_mode=noop", result["preflight"]["evidence"])
+            self.assertIn("~go init", result["message"])
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_root_confirm_current_directory_recovers_after_go_init_confirm(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            repo_root = temp_root / "repo"
+            workspace = repo_root / "packages" / "feature"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (repo_root / ".git").mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go init",
+                workspace_root=workspace,
+                activation_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                session_id="session-root-explicit-cwd-init",
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["preflight"]["reason_code"], "STUB_SELECTED")
+            self.assertEqual(result["preflight"]["activation_root"], str(workspace.resolve()))
+            self.assertIn("NON_GIT_WORKSPACE", result["preflight"]["evidence"])
+            self.assertIn("ignore_mode=noop", result["preflight"]["evidence"])
+            self.assertTrue((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_blocks_first_write_for_non_interactive_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                interaction_mode="non_interactive",
+                session_id="session-non-interactive",
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["preflight"]["reason_code"], "NON_INTERACTIVE")
+            self.assertEqual(result["error_code"], "workspace_first_write_blocked")
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_blocks_first_write_for_readonly_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            original_mode = workspace.stat().st_mode
+            workspace.chmod(0o555)
+            try:
+                if os.access(workspace, os.W_OK):
+                    self.skipTest("workspace remains writable on this platform")
+
+                result = enter_runtime_gate(
+                    "~go plan 补 runtime gate 骨架",
+                    workspace_root=workspace,
+                    payload_manifest_path=payload_manifest_path,
+                    user_home=temp_root / "home",
+                    session_id="session-readonly",
+                )
+            finally:
+                workspace.chmod(original_mode)
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["preflight"]["reason_code"], "READONLY")
+            self.assertIn(f"target_root={workspace.resolve()}", result["preflight"]["evidence"])
+            self.assertEqual(result["error_code"], "workspace_first_write_blocked")
+            self.assertIn("receipt_write_error", result)
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
+    def test_gate_preflight_requires_confirm_for_non_git_workspace_before_go_plan_bootstrap(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
@@ -333,9 +492,38 @@ class RuntimeGateTests(unittest.TestCase):
                 user_home=temp_root / "home",
             )
 
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["preflight"]["action"], "skipped")
+            self.assertEqual(result["preflight"]["reason_code"], "CONFIRM_BOOTSTRAP_REQUIRED")
+            self.assertEqual(result["preflight"]["host_id"], "codex")
+            self.assertIn("NON_GIT_WORKSPACE", result["preflight"]["evidence"])
+            self.assertIn("ignore_mode=noop", result["preflight"]["evidence"])
+            self.assertEqual(result["allowed_response_mode"], ERROR_VISIBLE_RETRY)
+            self.assertEqual(result["error_code"], "workspace_first_write_blocked")
+            self.assertIn("~go init", result["message"])
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+            self.assertFalse((workspace / ".sopify-runtime" / "scripts").exists())
+
+    def test_gate_preflight_bootstraps_missing_git_workspace_for_go_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan 补 runtime gate 骨架",
+                workspace_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+            )
+
             self.assertEqual(result["status"], "ready")
             self.assertEqual(result["preflight"]["action"], "bootstrapped")
+            self.assertEqual(result["preflight"]["reason_code"], "STUB_SELECTED")
             self.assertEqual(result["preflight"]["host_id"], "codex")
+            self.assertNotIn("NON_GIT_WORKSPACE", result["preflight"].get("evidence", ()))
             self.assertTrue((workspace / ".sopify-runtime" / "manifest.json").exists())
             self.assertFalse((workspace / ".sopify-runtime" / "scripts").exists())
 
@@ -355,6 +543,9 @@ class RuntimeGateTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "ready")
             self.assertEqual(result["preflight"]["action"], "bootstrapped")
+            self.assertEqual(result["preflight"]["reason_code"], "STUB_SELECTED")
+            self.assertIn("NON_GIT_WORKSPACE", result["preflight"]["evidence"])
+            self.assertIn("ignore_mode=noop", result["preflight"]["evidence"])
             self.assertTrue((workspace / ".sopify-runtime" / "manifest.json").exists())
 
     def test_preflight_returns_selected_pinned_bundle_contract_instead_of_payload_active_bundle(self) -> None:
@@ -431,7 +622,8 @@ class RuntimeGateTests(unittest.TestCase):
                 check=True,
             )
             bootstrap_payload = json.loads(install_result.stdout)
-            self.assertEqual(bootstrap_payload["reason_code"], "MISSING_BUNDLE")
+            self.assertEqual(bootstrap_payload["reason_code"], "STUB_SELECTED")
+            self.assertIn("NON_GIT_WORKSPACE", bootstrap_payload["evidence"])
 
             payload_manifest = json.loads(payload_manifest_path.read_text(encoding="utf-8"))
             selected_version = str(payload_manifest["active_version"])
@@ -652,6 +844,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             explicit_home = temp_root / "explicit-home"
             env_home = temp_root / "env-home"
             explicit_manifest_path = _install_payload_manifest_for_gate(home_root=explicit_home)
@@ -709,6 +902,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             real_home = temp_root / "real-home"
             embedded_home = temp_root / "embedded-home"
             _install_payload_manifest_for_gate(home_root=embedded_home)
@@ -728,6 +922,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             explicit_home = temp_root / "explicit-home"
             other_home = temp_root / "other-home"
             _install_payload_manifest_for_gate(home_root=explicit_home)
@@ -743,11 +938,12 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertEqual(result["status"], "ready")
             self.assertEqual(result["preflight"]["payload_root"], str((explicit_home / ".codex" / "sopify").resolve()))
 
-    def test_gate_preflight_uses_host_id_to_select_candidate_without_cross_host_ordering(self) -> None:
+    def test_gate_preflight_requires_explicit_payload_root_when_multiple_payloads_exist_even_if_host_id_is_present(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             codex_home = temp_root / "home"
             claude_home = temp_root / "home"
             CODEX_ADAPTER.destination_root(codex_home).mkdir(parents=True, exist_ok=True)
@@ -755,22 +951,25 @@ class RuntimeGateTests(unittest.TestCase):
             install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=codex_home)
             install_global_payload(CLAUDE_ADAPTER, repo_root=REPO_ROOT, home_root=claude_home)
 
-            result = enter_runtime_gate(
-                "~go plan demo",
-                workspace_root=workspace,
-                host_id="claude",
-                user_home=temp_root / "home",
-            )
+            with patch.dict(os.environ, {}, clear=True):
+                result = enter_runtime_gate(
+                    "~go plan demo",
+                    workspace_root=workspace,
+                    host_id="claude",
+                    user_home=temp_root / "home",
+                )
 
-            self.assertEqual(result["status"], "ready")
-            self.assertEqual(result["preflight"]["host_id"], "claude")
-            self.assertEqual(result["preflight"]["payload_root"], str((temp_root / "home" / ".claude" / "sopify").resolve()))
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "workspace_preflight_failed")
+            self.assertIn("pass payload_root explicitly", result["message"])
+            self.assertIn("audit-only", result["message"])
 
     def test_gate_preflight_host_id_missing_default_payload_fail_closes_even_when_env_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             home = temp_root / "home"
             CODEX_ADAPTER.destination_root(home).mkdir(parents=True, exist_ok=True)
             codex_payload = install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home).root
@@ -785,13 +984,35 @@ class RuntimeGateTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["error_code"], "workspace_preflight_failed")
-            self.assertIn(".claude", result["message"])
+            self.assertIn("does not match", result["message"])
+            self.assertIn("SOPIFY_PAYLOAD_MANIFEST", result["message"])
 
     def test_gate_preflight_missing_host_payload_still_allows_explicit_payload_root_escape_hatch(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
+            home = temp_root / "home"
+            CODEX_ADAPTER.destination_root(home).mkdir(parents=True, exist_ok=True)
+            codex_payload = install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home).root
+
+            result = enter_runtime_gate(
+                "~go plan demo",
+                workspace_root=workspace,
+                payload_root=codex_payload,
+                user_home=home,
+            )
+
+            self.assertEqual(result["status"], "ready")
+            self.assertEqual(result["preflight"]["payload_root"], str(codex_payload.resolve()))
+
+    def test_gate_preflight_fail_closes_when_explicit_payload_root_conflicts_with_host_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             home = temp_root / "home"
             CODEX_ADAPTER.destination_root(home).mkdir(parents=True, exist_ok=True)
             codex_payload = install_global_payload(CODEX_ADAPTER, repo_root=REPO_ROOT, home_root=home).root
@@ -804,14 +1025,17 @@ class RuntimeGateTests(unittest.TestCase):
                 user_home=home,
             )
 
-            self.assertEqual(result["status"], "ready")
-            self.assertEqual(result["preflight"]["payload_root"], str(codex_payload.resolve()))
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["error_code"], "workspace_preflight_failed")
+            self.assertIn("explicit payload_root", result["message"])
+            self.assertIn("does not match", result["message"])
 
     def test_gate_preflight_exposes_global_bundle_root_from_payload_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             payload_manifest_path = _install_payload_manifest_for_gate(home_root=temp_root / "home")
 
             result = enter_runtime_gate(
@@ -859,6 +1083,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             home = temp_root / "home"
             CODEX_ADAPTER.destination_root(home).mkdir(parents=True, exist_ok=True)
             CLAUDE_ADAPTER.destination_root(home).mkdir(parents=True, exist_ok=True)
@@ -1061,6 +1286,28 @@ class RuntimeGateTests(unittest.TestCase):
             self.assertEqual(result["preflight"]["helper_argv_mode"], "legacy_request_preserved")
             self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
 
+    def test_gate_preflight_fail_closes_when_legacy_helper_cannot_honor_non_interactive_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_root = Path(temp_dir)
+            workspace = temp_root / "workspace"
+            workspace.mkdir(parents=True, exist_ok=True)
+            payload_manifest_path = _write_host_id_legacy_payload_manifest_for_gate(home_root=temp_root / "home")
+
+            result = enter_runtime_gate(
+                "~go plan demo",
+                workspace_root=workspace,
+                payload_manifest_path=payload_manifest_path,
+                user_home=temp_root / "home",
+                interaction_mode="non_interactive",
+            )
+
+            self.assertEqual(result["status"], "error")
+            self.assertEqual(result["allowed_response_mode"], ERROR_VISIBLE_RETRY)
+            self.assertEqual(result["error_code"], "workspace_preflight_failed")
+            self.assertIn("too old", result["message"])
+            self.assertIn("Refresh the local Sopify install", result["message"])
+            self.assertFalse((workspace / ".sopify-runtime" / "manifest.json").exists())
+
     def test_drop_cli_arg_pairs_preserves_request_value_that_matches_removed_flag_name(self) -> None:
         command = [
             sys.executable,
@@ -1094,6 +1341,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "workspace"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             user_home = temp_root / "home"
             env_home = temp_root / "env-home"
             env_manifest_path = _install_payload_manifest_for_gate(home_root=env_home)
@@ -1115,6 +1363,7 @@ class RuntimeGateTests(unittest.TestCase):
             workspace = temp_root / "repo" / "packages" / "feature"
             workspace.mkdir(parents=True, exist_ok=True)
             ancestor_root = temp_root / "repo"
+            (ancestor_root / ".git").mkdir(parents=True, exist_ok=True)
             marker_path = ancestor_root / ".sopify-runtime" / "manifest.json"
             marker_path.parent.mkdir(parents=True, exist_ok=True)
             marker_path.write_text(json.dumps({"schema_version": "1"}, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -1137,6 +1386,7 @@ class RuntimeGateTests(unittest.TestCase):
             temp_root = Path(temp_dir)
             workspace = temp_root / "repo" / "packages" / "feature"
             workspace.mkdir(parents=True, exist_ok=True)
+            (workspace / ".git").mkdir(parents=True, exist_ok=True)
             ancestor_root = temp_root / "repo"
             marker_path = ancestor_root / ".sopify-runtime" / "manifest.json"
             marker_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1866,6 +2116,7 @@ class RuntimeGateTests(unittest.TestCase):
         self.assertTrue(payload["passed"])
         scenario_ids = {item["id"] for item in payload["scenarios"]}
         self.assertIn("normal_runtime_followup", scenario_ids)
+        self.assertIn("root_confirm_checkpoint_only", scenario_ids)
         self.assertIn("protected_plan_asset_runtime_first", scenario_ids)
         self.assertIn("clarification_checkpoint_only", scenario_ids)
         self.assertIn("decision_checkpoint_only", scenario_ids)

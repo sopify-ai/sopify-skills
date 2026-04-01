@@ -81,6 +81,10 @@
 - 背景:
   - 近期在 proposal pending 语境里，多次出现“补一个表述、漏一个表述”的 parser 修复循环。
   - 核心痛点不是实现复杂度，而是语义边界未一次定义清楚，导致同类句式不断返工。
+- 本轮新增追溯样本（2026-03-31）:
+  - 样本组 1: `直接继续分析这个分支还剩什么需要你确认`、`分析下 为啥一件简单的事被网关卡成这样`、`说下怎么补case`
+  - 样本组 2: `不要建包，只做确认项分析`、`取消这个 proposal checkpoint`
+  - 追溯结论: 这组样本共同暴露的是 pending checkpoint 语境下的 host-facing recall debt，而不是 `Plan H` 已收口的 state correctness 问题；后续应在 Plan A 统一覆盖 explain-only、existing plan referent、cancel checkpoint、mixed clause 四类语义，不在当前 `B1` 分支顺手落实现。
 - 当前方案现状（已收口）:
   - referential retopic 基本句式（如“这个方案改成 ...”）已进入 retopic 识别路径。
   - constraint follow-up question（如“继续按这个方案会有什么风险”）已按 fail-closed 处理，不再误改 checkpoint。
@@ -106,6 +110,7 @@
 Case（后续拆分 Plan A 子计划时必须覆盖）:
 - Case A-1 | checkpoint 中 explain-only 咨询不应二次物化
   - 场景: 已存在 `confirm_plan_package / confirm_decision` 等 pending checkpoint 时，用户提出“只分析、不改文件”的追问。
+  - 追溯样本: `直接继续分析这个分支还剩什么需要你确认`、`分析下 为啥一件简单的事被网关卡成这样`
   - 期望: 优先按 consult 回答并保持当前 checkpoint 身份稳定；除非用户明确提交 `继续 / 取消 / 1/2/...`，不得新建或重开 plan proposal，也不得仅因存在 pending decision 就自动重跑 execution gate。
   - 验收: 同一 session 连续 explain-only 问答后，不新增 proposal `checkpoint_id`，且 `plan/` 下无新建方案包目录。
   - 验收补充: 当消息显式锚定 existing plan（如 `plan_id / plan path / plan title / 当前方案`）且语义仍为“分析 / 解释 / 判断是否认可 / 还有什么需要确认”时，应继续返回 consult；`current_decision` 身份保持稳定，不得漂移为新的 decision/proposal checkpoint。
@@ -114,17 +119,20 @@ Case（后续拆分 Plan A 子计划时必须覆盖）:
   - 期望: 先稳定消费 decision selection，再把后续文本作为 follow-up 意图处理，避免回退到“无效选择”或重复 decision checkpoint。
 - Case A-3 | 引用受保护 plan 资产的分析请求不应默认升级阻断
   - 场景: 用户消息包含 `.sopify-skills/plan/...` 路径引用，或显式引用 existing plan（如 `plan_id / plan title`），但意图是“只分析/不改文件/判断是否认可”。
+  - 追溯样本: `还剩什么需要你确认`、`分析下 <plan_id> 可以执行了吗还有什么需要确认`
   - 期望: 优先按 consult 或非阻断路径处理；仅在命中明确执行动作（如 `继续/next/开始/选择`）时进入 checkpoint 约束，不得因为“显式 plan 引用 + pending checkpoint”组合而默认升级为阻断路径。
   - 验收: 在同一 session 下，连续分析问答不会新增 `plan_proposal_pending`；`required_host_action` 不因“只分析”从 consult 漂移到阻断 checkpoint。
   - 验收补充: `分析下 <plan_id> 可以执行了吗还有什么需要确认` 这类请求，在未命中明确确认动作时，应保持为 consult / inspect 类回答，不得直接消费或重开 `confirm_decision`。
 - Case A-4 | “取消 checkpoint”应幂等收口，不得派生新 pending
   - 场景: 当前处于 `confirm_decision / confirm_plan_package` pending，用户输入“取消这个 checkpoint”。
+  - 追溯样本: `取消这个 proposal checkpoint`、`取消这个 checkpoint`
   - 期望: 只取消当前 pending（或返回已取消状态），并恢复到稳定可继续态；不得创建新的 proposal 或切到其他 checkpoint 类型。
   - 验收: 取消后 `current_handoff.required_host_action` 不再是新的 pending checkpoint；不会出现“取消动作触发新 plan_proposal_pending”的链路漂移。
   - 验收补充: 当用户输入“取消这个 checkpoint”等含取消关键词的自由文本时，必须按 `cancel` 处理，并允许 `status=cancelled/resume_action=cancel` 在无 `selected_option_id` 的情况下生效，且不得派生新的 pending checkpoint。
 - Case A-5 | 逗号混合句的局部语境歧义应单独细化
   - 场景: 当前为保留 `"取消这个 checkpoint，不要取消全部"` 这类混合句的可执行语义，`, / ，` 仍作为 cancel 成功边界。
   - 已知残余风险: `"取消这个 checkpoint，为什么还会回到 pending"` 这类分析/追问句仍可能误命中 cancel。
+  - 追溯样本: `不要建包，只做确认项分析`、`取消这个 checkpoint，为什么还会回到 pending`
   - 期望: 在 Plan A 中统一细化逗号后从句的局部语境，区分否定补充、解释性补充与疑问补充；该项不回流到 Plan H。
   - 验收: 保留 `"取消这个 checkpoint，不要取消全部"` 的 cancel 语义，同时降低 `"取消这个 checkpoint，为什么..."` 类问句的误触发率。
 - Case A-6 | execution confirm 与 state_conflict abort 必须单次收敛

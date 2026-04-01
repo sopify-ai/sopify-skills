@@ -22,7 +22,18 @@ NORMAL_RUNTIME_FOLLOWUP = "normal_runtime_followup"
 CHECKPOINT_ONLY = "checkpoint_only"
 ERROR_VISIBLE_RETRY = "error_visible_retry"
 _RUNTIME_ONLY_STATE_CONFLICT_SOURCE_KIND = "current_request_runtime_only_state_conflict"
-_PREFLIGHT_BLOCKING_REASON_CODES = frozenset({"BRAKE_LAYER_BLOCKED", "FIRST_WRITE_NOT_AUTHORIZED", "COMMAND_NOT_BOOTSTRAP_AUTHORIZED"})
+_PREFLIGHT_BLOCKING_REASON_CODES = frozenset(
+    {
+        "BRAKE_LAYER_BLOCKED",
+        "FIRST_WRITE_NOT_AUTHORIZED",
+        "COMMAND_NOT_BOOTSTRAP_AUTHORIZED",
+        "CONFIRM_BOOTSTRAP_REQUIRED",
+        "ROOT_CONFIRM_REQUIRED",
+        "READONLY",
+        "NON_INTERACTIVE",
+    }
+)
+_PREFLIGHT_CHECKPOINT_REASON_CODES = frozenset({"ROOT_CONFIRM_REQUIRED"})
 
 
 def enter_runtime_gate(
@@ -32,6 +43,7 @@ def enter_runtime_gate(
     global_config_path: str | Path | None = None,
     payload_manifest_path: str | Path | None = None,
     activation_root: str | Path | None = None,
+    interaction_mode: str | None = None,
     payload_root: str | Path | None = None,
     host_id: str | None = None,
     requested_root: str | Path | None = None,
@@ -56,6 +68,7 @@ def enter_runtime_gate(
                 request_text=request,
                 payload_manifest_path=payload_manifest_path,
                 activation_root=activation_root,
+                interaction_mode=interaction_mode,
                 payload_root=payload_root,
                 host_id=host_id,
                 requested_root=requested_root,
@@ -63,6 +76,7 @@ def enter_runtime_gate(
             )
         )
         if _preflight_blocks_runtime(contract["preflight"]):
+            preflight_mode = _preflight_allowed_response_mode(contract["preflight"])
             resolved_session_id = _resolve_session_id(session_id)
             contract["session_id"] = resolved_session_id
             contract["runtime"] = {
@@ -95,7 +109,7 @@ def enter_runtime_gate(
                 {
                     "status": "error",
                     "gate_passed": False,
-                    "allowed_response_mode": ERROR_VISIBLE_RETRY,
+                    "allowed_response_mode": preflight_mode,
                     "error_code": "workspace_first_write_blocked",
                     "message": str(contract["preflight"].get("message") or "Workspace preflight blocked runtime execution"),
                 }
@@ -244,6 +258,16 @@ def _base_contract(workspace_root: Path) -> dict[str, Any]:
             "persisted_handoff_matches_current_request": False,
         },
     }
+
+
+def _preflight_allowed_response_mode(preflight: Mapping[str, Any]) -> str:
+    reason_code = str(preflight.get("reason_code") or "").strip()
+    # Root selection is a recoverable pre-runtime checkpoint. Hosts should stop
+    # and ask the user to choose an activation root instead of treating it as a
+    # generic visible retry error.
+    if reason_code in _PREFLIGHT_CHECKPOINT_REASON_CODES:
+        return CHECKPOINT_ONLY
+    return ERROR_VISIBLE_RETRY
 
 
 def _normalize_preferences(result: PreferencesPreloadResult) -> dict[str, Any]:
@@ -692,7 +716,10 @@ def _finalize_gate_contract(
     )
     if write_receipt:
         contract["receipt_path"] = str(receipt_path)
-        write_gate_receipt(receipt_path, contract)
+        try:
+            write_gate_receipt(receipt_path, contract)
+        except OSError as exc:
+            contract["receipt_write_error"] = str(exc)
     return contract
 
 

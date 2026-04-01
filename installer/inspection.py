@@ -7,7 +7,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from installer.bootstrap_workspace import _classify_workspace_bundle, _resolve_selected_payload_bundle
+from installer.bootstrap_workspace import (
+    DIAGNOSTIC_NON_GIT_WORKSPACE,
+    REASON_STUB_INVALID,
+    REASON_STUB_SELECTED,
+    _classify_workspace_bundle,
+    _resolve_selected_payload_bundle,
+)
 from installer.hosts import iter_host_registrations
 from installer.hosts.base import HostAdapter, HostRegistration
 from installer.models import HostCapability, InstallError
@@ -273,21 +279,21 @@ def inspect_host(
             check_id="workspace_bundle_manifest",
             status=CHECK_SKIP,
             reason_code=REASON_WORKSPACE_NOT_REQUESTED,
-            recommendation="Workspace bootstrap was not requested. Trigger Sopify in a project workspace to bootstrap on demand, or reinstall with `--workspace <path>`.",
+            recommendation="Workspace bootstrap was not requested. Trigger Sopify in a project workspace to bootstrap on demand.",
         )
         handoff_first = InspectionCheck(
             host_id=capability.host_id,
             check_id="workspace_handoff_first",
             status=CHECK_SKIP,
             reason_code=REASON_WORKSPACE_NOT_REQUESTED,
-            recommendation="Trigger Sopify in a project workspace to bootstrap on demand, or reinstall with `--workspace <path>`.",
+            recommendation="Trigger Sopify in a project workspace to bootstrap on demand.",
         )
         preferences_preload = InspectionCheck(
             host_id=capability.host_id,
             check_id="workspace_preferences_preload",
             status=CHECK_SKIP,
             reason_code=REASON_WORKSPACE_NOT_REQUESTED,
-            recommendation="Trigger Sopify in a project workspace to bootstrap on demand, or reinstall with `--workspace <path>`.",
+            recommendation="Trigger Sopify in a project workspace to bootstrap on demand.",
         )
         smoke = _inspect_smoke(
             adapter=adapter,
@@ -494,6 +500,9 @@ def render_doctor_text(payload: dict[str, object]) -> str:
         line = f"  - {prefix}{check['check_id']} -> {check['status']} ({check['reason_code']}){source_suffix}"
         if check.get("recommendation"):
             line += f" | {check['recommendation']}"
+        display_evidence = _displayable_evidence(check.get("evidence") or ())
+        if display_evidence:
+            line += f" | evidence: {', '.join(display_evidence)}"
         lines.append(line)
     return "\n".join(lines)
 
@@ -770,16 +779,17 @@ def _inspect_workspace_bundle(
         current_manifest_path, current_manifest = validate_workspace_stub_manifest(bundle_root)
     except InstallError as exc:
         current_manifest_path = bundle_root / "manifest.json"
+        reason_code = "MISSING_BUNDLE" if not current_manifest_path.exists() else REASON_STUB_INVALID
         return InspectionCheck(
             host_id=capability.host_id,
             check_id="workspace_bundle_manifest",
             status=CHECK_FAIL,
-            reason_code=_reason_code_from_install_error(exc, default="INVALID_WORKSPACE_MANIFEST"),
+            reason_code=reason_code,
             evidence=tuple(str(path) for path in (current_manifest_path, bundle_root) if path.exists()),
             recommendation=_workspace_bundle_recommendation(
                 capability.host_id,
                 workspace_root,
-                "INVALID_WORKSPACE_MANIFEST",
+                reason_code,
                 str(exc),
             ),
         )
@@ -857,6 +867,11 @@ def _inspect_workspace_bundle(
         str(path)
         for path in (current_manifest_path, bundle_root)
         if path.exists()
+    )
+    evidence += _workspace_bundle_evidence(
+        workspace_root=workspace_root,
+        current_manifest=current_manifest,
+        reason_code=reason_code,
     )
     return InspectionCheck(
         host_id=capability.host_id,
@@ -1023,12 +1038,16 @@ def _build_doctor_summary(checks: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
-def _workspace_bundle_recommendation(host_id: str, workspace_root: Path, reason_code: str, message: str) -> str:
+def _workspace_bundle_recommendation(host_id: str, workspace_root: Path, reason_code: str, message: str) -> str | None:
     if reason_code in {"MISSING_BUNDLE", "WORKSPACE_BUNDLE_OUTDATED"}:
+        return f"Sopify is not enabled in {workspace_root} yet. Trigger Sopify there to bootstrap on demand."
+    if reason_code == REASON_STUB_INVALID:
         return (
-            f"Trigger Sopify inside {workspace_root} or run "
-            f"python3 scripts/install_sopify.py --target {host_id}:zh-CN --workspace {workspace_root}"
+            f"The local `.sopify-runtime/manifest.json` in {workspace_root} looks invalid. "
+            f"Rerun Sopify bootstrap, or delete that file and retry."
         )
+    if reason_code == REASON_STUB_SELECTED:
+        return None
     if reason_code in {
         REASON_GLOBAL_BUNDLE_MISSING,
         REASON_GLOBAL_BUNDLE_INCOMPATIBLE,
@@ -1041,6 +1060,31 @@ def _workspace_bundle_recommendation(host_id: str, workspace_root: Path, reason_
 
 def _looks_like_stub_only_workspace(bundle_root: Path) -> bool:
     return all(not (bundle_root / name).exists() for name in ("runtime", "scripts", "tests"))
+
+
+def _workspace_bundle_evidence(
+    *,
+    workspace_root: Path,
+    current_manifest: dict[str, Any],
+    reason_code: str,
+) -> tuple[str, ...]:
+    evidence: list[str] = []
+    ignore_mode = str(current_manifest.get("ignore_mode") or "").strip()
+    if ignore_mode == "noop" and not (workspace_root / ".git").exists():
+        evidence.extend((DIAGNOSTIC_NON_GIT_WORKSPACE, "ignore_mode=noop"))
+    elif reason_code == REASON_STUB_SELECTED and ignore_mode:
+        evidence.append(f"ignore_mode={ignore_mode}")
+    return tuple(item for item in evidence if item)
+
+
+def _displayable_evidence(evidence: object) -> tuple[str, ...]:
+    values: list[str] = []
+    for item in evidence if isinstance(evidence, (list, tuple)) else ():
+        normalized = str(item or "").strip()
+        if not normalized or normalized.startswith("/"):
+            continue
+        values.append(normalized)
+    return tuple(values[:3])
 
 
 def _reason_code_from_install_error(exc: InstallError, *, default: str = "MISSING_REQUIRED_FILE") -> str:
@@ -1061,9 +1105,9 @@ def _payload_bundle_recommendation(host_id: str, reason_code: str) -> str | None
     if reason_code == REASON_GLOBAL_BUNDLE_INCOMPATIBLE:
         return f"Refresh the {host_id} payload because the selected global bundle is incomplete or incompatible: {refresh_command}"
     if reason_code == REASON_GLOBAL_INDEX_CORRUPTED:
-        return f"Refresh the {host_id} payload because the payload bundle index is invalid or inconsistent: {refresh_command}"
+        return f"Refresh the {host_id} payload because the bundle index is invalid or inconsistent: {refresh_command}"
     if reason_code == REASON_LEGACY_FALLBACK_SELECTED:
-        return f"Refresh the {host_id} payload to migrate from the legacy bundle layout to the versioned payload index: {refresh_command}"
+        return f"Refresh the {host_id} payload to migrate from the legacy bundle layout to the versioned bundle index: {refresh_command}"
     return None
 
 

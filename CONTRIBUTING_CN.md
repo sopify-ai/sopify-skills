@@ -25,28 +25,31 @@
 
 ## Runtime Bundle 与宿主接入
 
-需要以维护者视角控制 vendored runtime bundle 时，使用以下命令：
+需要以维护者视角验证 thin-stub + selected bundle 接入时，优先使用以下命令：
 
 ```bash
-# 将 runtime 资产同步到目标工作区
-bash scripts/sync-runtime-assets.sh /path/to/project
-
-# 验证目标工作区的原始输入入口
-python3 /path/to/project/.sopify-runtime/scripts/sopify_runtime.py \
+# 验证 repo-local 原始输入入口
+python3 scripts/sopify_runtime.py --allow-direct-entry \
   --workspace-root /path/to/project "重构数据库层"
 
-# 可选：在目标工作区运行便携 smoke 校验
-python3 -m unittest discover \
-  -s /path/to/project/.sopify-runtime/tests \
-  -p 'test_runtime.py' -v
-bash /path/to/project/.sopify-runtime/scripts/check-runtime-smoke.sh
+# 验证 repo-local runtime gate
+python3 scripts/runtime_gate.py enter \
+  --workspace-root /path/to/project \
+  --request "~go plan 重构数据库层"
+
+# 验证 bundle 完整性
+bash scripts/check-runtime-smoke.sh
+
+# 验证“一次安装 + 项目触发 bootstrap + selected bundle 接管”
+python3 scripts/check-install-payload-bundle-smoke.py
 ```
 
 Bundle 规则：
 
 - 全局 payload 位于 `~/.codex/sopify/` 或 `~/.claude/sopify/`
-- 宿主必须优先读取 `.sopify-runtime/manifest.json`
-- 宿主第一跳统一走 `.sopify-runtime/scripts/runtime_gate.py enter`
+- 工作区内的 `.sopify-runtime/manifest.json` 只作为 thin stub，不再承诺携带 `limits.runtime_gate_entry / limits.preferences_preload_entry`
+- 宿主必须结合 workspace stub 与 payload manifest 解析 selected global bundle，再从选中 bundle contract 或等价 preflight contract 发现 helper 入口
+- 宿主第一跳统一走 selected bundle 的 `runtime_gate_entry`；只有 repo-local 开发态才直接调用 `scripts/runtime_gate.py enter`
 - clarification / decision / develop checkpoint helper 都是内部桥接 helper，不替代默认主入口
 
 ### Installer 入口与 Release Asset
@@ -57,7 +60,7 @@ Bundle 规则：
 
 ```bash
 bash scripts/install-sopify.sh --target codex:zh-CN
-python3 scripts/install_sopify.py --target claude:en-US --workspace /path/to/project
+python3 scripts/install_sopify.py --target claude:en-US
 ```
 
 - dev / maintainer 远程入口（`raw/main`，不进 README 首屏）：
@@ -80,6 +83,7 @@ curl -fsSL https://github.com/sopify-ai/sopify/releases/latest/download/install.
 - `main` 分支里的 root 脚本保留 dev 默认值（`SOURCE_CHANNEL=dev`、`SOURCE_REF=main`）
 - stable release asset 必须由 root 脚本按 release tag 渲染后上传，不能直接上传 `main` 上的原文件
 - 分发层必须继续走 host registry，不允许在 installer 入口里硬编码 `codex` / `claude` 分支；README 只控制当前正式支持面的展示
+- `--workspace <path>` 当前只保留给 maintainer / internal prewarm 调试，不属于 B1 默认用户路径；正式路径是先完成全局安装，再在项目里第一次触发 Sopify，由 runtime gate 完成 bootstrap
 
 release asset 渲染 checklist：
 

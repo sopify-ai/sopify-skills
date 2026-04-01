@@ -48,7 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--workspace",
         default=None,
-        help="Optional workspace root to prewarm with `.sopify-runtime/`. If omitted, only the host prompt layer and global payload are installed.",
+        help=(
+            "Optional internal-only workspace prewarm path. Default user flow is to install the host prompt and "
+            "global payload first, then let runtime gate bootstrap `.sopify-runtime/` on the first project trigger."
+        ),
     )
     parser.add_argument(
         "--ref",

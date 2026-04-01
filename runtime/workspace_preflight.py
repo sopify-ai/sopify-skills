@@ -193,6 +193,7 @@ def preflight_workspace_runtime(
     request_text: str = "",
     payload_manifest_path: str | Path | None = None,
     activation_root: str | Path | None = None,
+    interaction_mode: str | None = None,
     payload_root: str | Path | None = None,
     host_id: str | None = None,
     requested_root: str | Path | None = None,
@@ -261,6 +262,8 @@ def preflight_workspace_runtime(
     command = [sys.executable, str(helper_path), "--workspace-root", str(resolved_workspace_root), "--request", request_text]
     if activation_root is not None:
         command.extend(["--activation-root", str(activation_root_path)])
+    if interaction_mode is not None:
+        command.extend(["--interaction-mode", str(interaction_mode)])
     if detected_host_id:
         command.extend(["--host-id", detected_host_id])
     if requested_root is not None:
@@ -269,6 +272,7 @@ def preflight_workspace_runtime(
         helper_path=helper_path,
         workspace_root=resolved_workspace_root,
         command=command,
+        interaction_mode=interaction_mode,
     )
     stdout = completed.stdout.strip()
     try:
@@ -284,7 +288,11 @@ def preflight_workspace_runtime(
         message = str(result.get("message") or completed.stderr.strip() or stdout or "unknown bootstrap failure")
         raise WorkspacePreflightError(f"Workspace preflight failed: {message}")
     payload = dict(result)
-    payload.setdefault("activation_root", str(activation_root_path))
+    # Root disambiguation must stay purely about picking a directory. If the
+    # helper is still asking the host to choose a root, do not backfill the
+    # default cwd activation root here or we leak a fake selection.
+    if str(payload.get("reason_code") or "").strip() != "ROOT_CONFIRM_REQUIRED":
+        payload.setdefault("activation_root", str(activation_root_path))
     payload.setdefault("requested_root", str(requested_root_path))
     payload.setdefault("root_resolution_source", root_resolution_source)
     payload.setdefault("payload_root", str(payload_root))
@@ -325,6 +333,33 @@ def _infer_host_id_from_manifest_path(path: Path) -> str | None:
     if ".claude" in normalized_parts:
         return "claude"
     return None
+
+
+def _ensure_supported_host_id(*, requested_host_id: str | None, home_root: Path) -> None:
+    if requested_host_id is None:
+        return
+    try:
+        resolve_host_payload_root(home_root=home_root, host_id=requested_host_id)
+    except ValueError as exc:
+        raise WorkspacePreflightError(f"Unsupported host_id: {requested_host_id}") from exc
+
+
+def _validate_host_id_alignment(
+    *,
+    requested_host_id: str | None,
+    selected_host_id: str | None,
+    selection_source: str,
+) -> None:
+    if requested_host_id is None or selected_host_id is None or requested_host_id == selected_host_id:
+        return
+    raise WorkspacePreflightError(
+        "Ingress host_id '{}' does not match the payload selected from {} (resolved host '{}'). "
+        "Pass the matching payload_root or omit host_id.".format(
+            requested_host_id,
+            selection_source,
+            selected_host_id,
+        )
+    )
 
 
 def _load_explicit_payload_manifest(path: Path) -> tuple[dict[str, Any], Path, str | None]:
@@ -382,48 +417,61 @@ def _resolve_payload_contract(
     host_id: str | None,
     home_root: Path,
 ) -> dict[str, Any] | None:
-    detected_host_id = str(host_id or "").strip() or None
+    requested_host_id = str(host_id or "").strip() or None
+    _ensure_supported_host_id(requested_host_id=requested_host_id, home_root=home_root)
     if payload_manifest_path is not None:
         explicit_path = Path(payload_manifest_path).expanduser().resolve()
         payload_manifest, payload_manifest_file, inferred_host_id = _load_explicit_payload_manifest(explicit_path)
+        _validate_host_id_alignment(
+            requested_host_id=requested_host_id,
+            selected_host_id=inferred_host_id,
+            selection_source=f"explicit payload manifest {payload_manifest_file}",
+        )
         return {
             "payload_manifest": payload_manifest,
             "payload_manifest_file": payload_manifest_file,
             "payload_root": payload_manifest_file.parent,
-            "host_id": detected_host_id or inferred_host_id,
+            "host_id": inferred_host_id or requested_host_id,
         }
     if payload_root is not None:
         explicit_payload_root = Path(payload_root).expanduser().resolve()
         payload_manifest, payload_manifest_file = _load_payload_manifest_from_root(explicit_payload_root)
+        inferred_host_id = _infer_host_id_from_manifest_path(payload_manifest_file)
+        _validate_host_id_alignment(
+            requested_host_id=requested_host_id,
+            selected_host_id=inferred_host_id,
+            selection_source=f"explicit payload_root {explicit_payload_root}",
+        )
         return {
             "payload_manifest": payload_manifest,
             "payload_manifest_file": payload_manifest_file,
             "payload_root": explicit_payload_root,
-            "host_id": detected_host_id or _infer_host_id_from_manifest_path(payload_manifest_file),
-        }
-    if detected_host_id:
-        registered_payload_root = resolve_host_payload_root(home_root=home_root, host_id=detected_host_id)
-        payload_manifest, payload_manifest_file = _load_payload_manifest_from_root(registered_payload_root)
-        return {
-            "payload_manifest": payload_manifest,
-            "payload_manifest_file": payload_manifest_file,
-            "payload_root": registered_payload_root,
-            "host_id": detected_host_id,
+            "host_id": inferred_host_id or requested_host_id,
         }
 
     env_manifest = (os.environ.get("SOPIFY_PAYLOAD_MANIFEST") or "").strip()
     if env_manifest:
         env_path = Path(env_manifest).expanduser().resolve()
         payload_manifest, payload_manifest_file, inferred_host_id = _load_explicit_payload_manifest(env_path)
+        _validate_host_id_alignment(
+            requested_host_id=requested_host_id,
+            selected_host_id=inferred_host_id,
+            selection_source=f"SOPIFY_PAYLOAD_MANIFEST {payload_manifest_file}",
+        )
         return {
             "payload_manifest": payload_manifest,
             "payload_manifest_file": payload_manifest_file,
             "payload_root": payload_manifest_file.parent,
-            "host_id": inferred_host_id,
+            "host_id": inferred_host_id or requested_host_id,
         }
 
     current_host_id = _detect_current_host_id_from_env()
     if current_host_id is not None:
+        _validate_host_id_alignment(
+            requested_host_id=requested_host_id,
+            selected_host_id=current_host_id,
+            selection_source=f"current host environment '{current_host_id}'",
+        )
         current_payload_root = resolve_host_payload_root(home_root=home_root, host_id=current_host_id)
         current_manifest_path = current_payload_root / "payload-manifest.json"
         if current_manifest_path.is_file():
@@ -452,10 +500,21 @@ def _resolve_payload_contract(
         return None
     if len(installed_candidates) > 1:
         host_list = ", ".join(sorted(candidate_host_id for candidate_host_id, _path in installed_candidates))
-        raise WorkspacePreflightError(
-            f"Multiple installed host payloads found ({host_list}); pass host_id or payload_root explicitly."
-        )
+        if requested_host_id is not None:
+            raise WorkspacePreflightError(
+                "Multiple installed host payloads found ({}); pass payload_root explicitly. "
+                "host_id='{}' is audit-only and does not select a payload.".format(
+                    host_list,
+                    requested_host_id,
+                )
+            )
+        raise WorkspacePreflightError(f"Multiple installed host payloads found ({host_list}); pass payload_root explicitly.")
     candidate_host_id, manifest_path = installed_candidates[0]
+    _validate_host_id_alignment(
+        requested_host_id=requested_host_id,
+        selected_host_id=candidate_host_id,
+        selection_source=f"the only installed payload {manifest_path.parent}",
+    )
     payload_manifest, payload_manifest_file = _load_payload_manifest_from_root(manifest_path.parent)
     return {
         "payload_manifest": payload_manifest,
@@ -556,6 +615,7 @@ def _run_bootstrap_helper_with_compatibility(
     helper_path: Path,
     workspace_root: Path,
     command: list[str],
+    interaction_mode: str | None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
     completed = subprocess.run(
         command,
@@ -566,7 +626,19 @@ def _run_bootstrap_helper_with_compatibility(
     if not _looks_like_legacy_argparse_error(completed):
         return (completed, "contract_v2")
 
-    request_preserving_command = _drop_cli_arg_pairs(command, {"--host-id", "--requested-root"})
+    if interaction_mode == "non_interactive" and _stderr_mentions_unrecognized_argument(completed, "--interaction-mode"):
+        # Non-interactive first-write protection must not silently degrade to a
+        # legacy helper that ignores the session mode and may write anyway.
+        raise WorkspacePreflightError(
+            "Current local Sopify helper is too old to safely handle non-interactive bootstrap. "
+            "Refresh the local Sopify install and retry."
+        )
+
+    unsupported_args = {"--host-id", "--requested-root"}
+    if _stderr_mentions_unrecognized_argument(completed, "--interaction-mode"):
+        unsupported_args.add("--interaction-mode")
+
+    request_preserving_command = _drop_cli_arg_pairs(command, unsupported_args)
     if request_preserving_command != command:
         request_preserving_completed = subprocess.run(
             request_preserving_command,
@@ -597,6 +669,7 @@ def _looks_like_legacy_argparse_error(completed: subprocess.CompletedProcess[str
         _stderr_mentions_unrecognized_argument(completed, "--request")
         or _stderr_mentions_unrecognized_argument(completed, "--host-id")
         or _stderr_mentions_unrecognized_argument(completed, "--requested-root")
+        or _stderr_mentions_unrecognized_argument(completed, "--interaction-mode")
     )
 
 
