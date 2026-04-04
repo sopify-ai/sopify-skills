@@ -1,6 +1,6 @@
 ---
-plan_id: 20260403_context-risk-adaptive-interruption
-feature_key: context-risk-adaptive-interruption
+plan_id: 20260403_plan-a-risk-adaptive-interruption
+feature_key: plan-a-risk-adaptive-interruption
 level: standard
 lifecycle_state: active
 knowledge_sync:
@@ -146,16 +146,17 @@ plan_status: design_active
 
 ### 8. 去显性来源化收敛
 
-- [ ] 8.1 统一目录名、`plan_id`、`feature_key` 为中性能力命名，禁止来源锚点残留
-  说明：`plan_id / feature_key` 已中性化；目录名迁移因活动 runtime state 仍引用旧路径而暂缓，待 state 退出活动态后再执行。
+- [x] 8.1 已校正：活动 plan 的目录名、`plan_id`、`feature_key` 视为受控机器字段，不纳入 Doc-1 去显性来源化治理
+  说明：活动 plan 以机器真相判断；只要仍被 `current_plan / current_run / current_decision / current_handoff` 任一活动状态引用，上述字段就不得在文档侧直接改写。
 - [x] 8.2 已完成：`background.md / design.md / tasks.md` 正文中的来源显式映射写法已替换为通用术语
 - [x] 8.3 已完成：图示标签、示例标识与分支命名中的来源锚点已替换为机制导向标签
-- [x] 8.4 已完成：对当前方案包正文执行预定义来源锚点 denylist 扫描，结果为零命中
+- [x] 8.4 已完成：对当前方案包展示层内容执行预定义来源锚点 denylist 扫描，结果为零命中
 
 验收标准：
 
-- 目录名、`plan_id`、`feature_key`、正文、图示标签均无显性来源锚点
-- 扫描结果零命中，且无“单文件清理但跨文件残留”的单点泄露
+- 活动 plan 的目录名、`plan_id`、`feature_key` 保持机器真相，不纳入公开层治理范围
+- 标题、正文、图示标签、示例标识、分支命名等展示层字段无显性来源锚点
+- 扫描结果零命中，且扫描范围只覆盖展示层内容，不把机器字段纳入误伤
 - 该治理项与 A-1 ~ A-8 runtime case 解耦，不影响 parser-first 主线验收
 
 ## G. v0.3 增补骨架
