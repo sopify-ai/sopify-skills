@@ -169,6 +169,8 @@ plan_status: design_active
 
 ### 9. 统一 checkpoint parser 的 fail-close contract
 
+规范来源：见 `design.md` §0 `P0 Freeze | 分层联动矩阵（最小冻结）`。本组与 §10 / §19 共享该节冻结口径。
+
 - [ ] 9.1 盘点各 `required_host_action` 在未知输入下的默认动作，找出所有不一致项
 - [ ] 9.2 为 `confirm_plan_package / confirm_execute / confirm_decision / answer_questions` 定义统一的 fail-close 入口与禁止隐式推进规则
 - [ ] 9.3 冻结 `signal_group / target_kind / target_slot / evidence_tier / mutually_exclusive_with / fallback_on_conflict` 的最小裁决字段，并明确未知输入何时直接落入 fail-close
@@ -187,8 +189,10 @@ plan_status: design_active
 
 ### 10. 局部判定失败矩阵与降级语义
 
-- [ ] 10.1 冻结 `no_match / ambiguous / malformed_input / state_missing / semantic_unavailable / context_budget_exceeded` 的最小失败类型集
-- [ ] 10.2 为每类失败类型定义 `fallback_action / prompt_mode / retry_policy / reason_code` 的跨 checkpoint 降级映射
+规范来源：见 `design.md` §0 `P0 Freeze | 分层联动矩阵（最小冻结）`。失败 family、主裁决优先级与 `secondary_reason_codes` 以该节为准。
+
+- [ ] 10.1 冻结 `resolution_failure / effect_contract_invalid` 的最小 family 集；其中 `resolution_failure` 至少覆盖 `no_match / ambiguous / malformed_input / semantic_unavailable / context_budget_exceeded`
+- [ ] 10.2 为每类失败 family 定义 `fallback_action / prompt_mode / retry_policy / reason_code` 的跨 checkpoint 降级映射，并明确 `primary_failure_type / secondary_reason_codes` 的归并口径
 - [ ] 10.3 明确 parser-first v1 与 vNext classifier 共享同一失败语义层，而不是各自定义一套 fallback
 - [ ] 10.4 建立 `reason_code -> host_facing_message_template` 映射表，补齐 fail-close 后的可执行引导语
 - [ ] 10.5 增加模板插值安全校验：模板中的 `{variable}` 必须存在于 `ActionProjection/ContextSnapshot` 允许变量集合
@@ -344,6 +348,8 @@ plan_status: design_active
 ## N. 遗留状态隔离与退出机制
 
 ### 19. legacy state quarantine + escape hatch
+
+规范来源：见 `design.md` §0 `P0 Freeze | 分层联动矩阵（最小冻结）`。`quarantine_annotation`、promotion 规则与 `best_proven_resume_target` 证明顺序以该节为准。
 
 - [ ] 19.1 定义 legacy pending state 的侦测规则与 quarantine 进入条件
 - [ ] 19.2 定义 quarantine 下的标准逃生动作（命令或自然语言重置），不得要求用户手动清理状态目录

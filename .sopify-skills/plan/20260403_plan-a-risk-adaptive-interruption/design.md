@@ -1,5 +1,7 @@
 # 技术设计: 局部语义收口方案 | 风险自适应打断与局部语义分类收敛
 
+总览导读：见 `machine-contract-overview.md`。该文档前半部分已收纳图示速览，后半部分保留详细矩阵；它只做导读，不替代本文和 runtime/state 真相源。
+
 ## 设计目标
 
 本子 plan 的设计目标不是立刻交付代码，而是把本方案的实现前提收敛成一套可执行的设计骨架：
@@ -176,6 +178,117 @@
 2. locale 差异只允许出现在 `Signal Extraction` 层；无论是中文、英文还是后续其他语言，最终都必须回落到统一的 `signal_id / resolved_action / reason_code`。
 3. 宿主差异只允许出现在 `Handoff / Output Adapter` 层；无论是终端、IDE 还是其他宿主，三张表与 `handoff_protocol` 的核心 schema 不应分叉。
 4. parser-first v1 与未来 classifier 都必须消费同一套 action projection 和三张表；不允许为不同语言或不同宿主分别维护多套真理表。
+
+### 0. P0 Freeze | 分层联动矩阵（最小冻结）
+
+**定位：**
+
+1. 本节冻结 Checkpoint A / P0 所需的跨层最小闭环，是三张表之前的前置约束。
+2. 本节只冻结 truth 层、主失败裁决、`consult_readonly_contract` 与 `best_proven_resume_target`，不扩展成新的状态树。
+3. `tasks.md` 的 `9.x / 10.x / 19.x` 以本节为共同规范源；`machine-contract-overview.md` 只保留导读与导航，不重复本节正文。
+
+#### 0.1 Truth 层最小冻结
+
+**硬不变量：**
+
+1. `truth_status != stable` 时，禁止进入 action resolution mainline；但必须允许进入 failure recovery / blocking branch。
+2. `quarantine` 默认只作为 annotation，不单独晋升为顶层 `truth_status`；只有切断活跃链证明时，才提升为 `state_missing` 或 `state_conflicted`。
+3. `malformed_input / semantic_unavailable / context_budget_exceeded` 属于 failure family，不进入 truth 层。
+
+| `truth_status` | 含义 | `resolution_enabled` | 默认宿主侧去向 |
+| --- | --- | --- | --- |
+| `stable` | 当前活跃链 machine truth 可由 `gate + snapshot + handoff` 稳定证明 | `true` | 沿当前 machine contract 继续；`allowed_response_mode` 仍由 gate contract 决定 |
+| `state_missing` | 当前活跃链必需 carrier 缺失，或被 quarantine 后无法证明当前 checkpoint / route | `false` | 进入 failure recovery / blocking branch；默认不允许自动推进 |
+| `state_conflicted` | 两个或以上可竞争 carrier 在 `durable identity / required_host_action / current_run.stage / checkpoint identity` 上互相冲突 | `false` | 进入 failure recovery / blocking branch；默认不允许自动推进 |
+| `contract_invalid` | 决定当前合法动作面所必需的机器契约失效 | `false` | 进入 failure recovery / blocking branch；若 strict entry / gate contract 本身不可用，可升级到 `error_visible_retry` |
+
+`quarantine_annotation` 最小字段冻结为：
+
+- `state_kind`
+- `path`
+- `scope`
+- `active_chain_relevance`
+- `promotion_decision`
+- `reason_code`
+- `durable_identity_ref`
+
+`quarantine_annotation` 的硬规则：
+
+1. `snapshot` 是 annotation 的唯一真相源。
+2. `handoff.artifacts` 只能回显 annotation，不得反向生成 annotation truth。
+3. annotation 必须是 carrier-scoped；单个非活跃残留文件不得把整轮 truth 拉成假不稳定。
+
+#### 0.2 主失败裁决优先级
+
+**硬规则：**
+
+1. 每轮只允许一个 `primary_failure_type` 驱动 fallback；其他失败原因只进入 `secondary_reason_codes` 做观测，不参与主裁决。
+2. 主裁决优先级固定为：`non-stable truth > truth-layer contract_invalid > resolution failure > effect_contract_invalid`。
+3. `effect_contract_invalid` 只在 `truth_status == stable` 后才可能成为 `primary_failure_type`；若 truth 已不稳定，它只能进入 `secondary_reason_codes`。
+
+| 优先级 | `primary_failure_type` 家族 | 代表项 | 说明 |
+| --- | --- | --- | --- |
+| 1 | `non_stable_truth` | `state_missing`, `state_conflicted` | machine truth 优先于局部 resolution 与 effect |
+| 2 | `truth_layer_contract_invalid` | `gate_contract_invalid`, `handoff_contract_invalid`, `checkpoint_contract_invalid`, `action_projection_contract_invalid` | 只覆盖决定当前合法动作面的机器契约失效 |
+| 3 | `resolution_failure` | `no_match`, `ambiguous`, `malformed_input`, `semantic_unavailable`, `context_budget_exceeded` | 仅在 truth 已稳定时参与主裁决 |
+| 4 | `effect_contract_invalid` | `schema_mismatch`, `version_mismatch`, `missing_required_field`, `unsupported_transition` | truth 已知，但 effect 层无法安全执行 |
+
+#### 0.3 `consult_readonly_contract`（条件必需契约）
+
+**定位：**
+
+1. `consult_readonly_contract` 是独立 schema，由 `Side-Effect Mapping Table` 产出，并通过 `current_handoff.artifacts.consult_readonly_contract` 暴露给宿主消费。
+2. 它是条件必需契约，不是全局必需契约。
+3. 它只作为只读 consult 出口的受控证明，不替代 `gate + handoff` 的全局真相。
+
+**准入规则：**
+
+1. 只有当 `Side-Effect Mapping` 明确改道到 `continue_host_consult`，或当前出口正在校验 consult 准入时，该合同才成为必需契约。
+2. 合同存在且 schema 有效，才允许只读 consult 出口。
+3. 在上述条件下，合同缺失或无效统一并入 `truth-layer contract_invalid`，并回到 fail-close。
+4. 在普通 `confirm_* / answer_questions / review_or_execute_plan` 主线中，合同缺失必须被忽略，不得污染普通 checkpoint truth。
+
+**最小字段冻结：**
+
+| 字段 | 角色 | 约束 |
+| --- | --- | --- |
+| `required_host_action` | echoed assertion | 固定为 `continue_host_consult` |
+| `allowed_response_mode` | echoed assertion | 固定为 `normal_runtime_followup` |
+| `resume_route` | echoed assertion | 必须由 machine contract 产出 |
+| `preserved_identity` | echoed assertion | 表示只读出口必须保留的 `plan / checkpoint / decision` 身份锚点 |
+| `context_sufficiency` | consult-local constraint | 必须达到 `sufficient` 才允许宿主作答 |
+| `forbidden_effects` | consult-local constraint | 至少禁止 `checkpoint_submission / run_stage_advance / plan_materialization / execution` |
+
+补充约束：
+
+1. `eligible` 不作为独立字段冻结；“合同存在且 schema 有效”本身就代表准入成立。
+2. 宿主不得因为“语义感觉像咨询”就自由 prose 降级；只有合同显式放行才可答。
+
+#### 0.4 `best_proven_resume_target`（evidence-first 恢复目标）
+
+**硬规则：**
+
+1. 恢复目标必须由 `durable identity + resume_route` 证明，不得由 transcript、时间最近原则或宿主 prose 猜测恢复。
+2. `resume_target_kind` 的 P0 最小枚举固定为：`checkpoint | plan_review | workflow_safe_start`。
+3. 若同时存在两个或以上可证明恢复目标，直接进入 `state_conflicted`，不得“择近”或“择优”猜恢复。
+
+| 证明顺序 | `resume_target_kind` | 最小证明 |
+| --- | --- | --- |
+| 1 | `checkpoint` | `current_handoff.required_host_action + matching checkpoint state + durable identity` 可直接证明当前活跃 checkpoint |
+| 2 | `checkpoint` | `current_run.stage + matching durable identities` 可在 handoff 证明缺失时证明安全 checkpoint |
+| 3 | `plan_review` | `current_handoff.required_host_action == review_or_execute_plan` 且 `current_handoff.plan_id == current_plan.plan_id` 且 `current_handoff.plan_path == current_plan.path`，并且 `gate/snapshot` 证明它是当前可恢复入口，而不是宿主自由回退 |
+| 4 | `workflow_safe_start` | 上述证明不足，但 machine contract 仍能产出安全 workflow 入口 |
+
+补充约束：
+
+1. `review_or_execute_plan` 默认归类为 `plan_review`，仅在 durable proof 不足时退回 `workflow_safe_start`。
+2. `plan_review` 证明不足时，禁止宿主脑补“反正像是在 review plan”。
+
+#### 0.5 P0 适用边界与非目标
+
+1. 本节只冻结跨层最小闭环，不冻结 continuity / projection 的计划语境连续性层。
+2. 本节不新增顶层 `truth_status`，也不把 `quarantine`、`legacy_ignored`、`contract_recovered` 扩成新的状态树。
+3. 本节不允许任何 transcript-based recovery；所有恢复都必须回到 machine contract 可证明的 target。
 
 ### 1. 信号优先级表 (Signal Priority Table)
 
@@ -578,7 +691,7 @@ SignalPriorityResolution:
 
 1. `plan_proposal_pending + command prefix` 的最终动作口径冻结为“保持显式 fail-close，不视为自动继续信号”。
 2. A-6 归属冻结为“继续留在本方案，不拆出 contract-safety 子项”。
-3. fail-close 默认动作矩阵版本与 `reason_code` 词法冻结。
+3. `P0 Freeze` 的 truth / failure / consult-readonly / resume-target 边界，以及 fail-close 默认动作矩阵版本与 `reason_code` 词法冻结。
 4. 三张真理表资产化与 Schema 冻结（`runtime/config/decision_tables.yaml` + Pydantic/JSON Schema + CI 校验）完成。
 5. `reason_code -> host_facing_message_template` 与插值安全校验冻结，模板渲染失败必须 fail-open 到安全兜底文案。
 6. legacy pending state 的 quarantine / escape hatch / 审计事件冻结，禁止因 schema 不兼容直接 crash。
