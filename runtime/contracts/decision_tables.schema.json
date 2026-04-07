@@ -1,0 +1,213 @@
+{
+  "schema_file_version": "1",
+  "asset_schema_version": "decision_tables.v1",
+  "root_order": [
+    "schema_version",
+    "asset_version",
+    "invariants",
+    "truth_statuses",
+    "quarantine_annotation_fields",
+    "primary_failure_priority",
+    "primary_failure_families",
+    "consult_readonly_contract",
+    "best_proven_resume_target"
+  ],
+  "invariants_required_true": [
+    "stable_truth_required_for_resolution",
+    "consult_readonly_default_deny",
+    "transcript_recovery_forbidden"
+  ],
+  "truth_statuses": {
+    "ordered_statuses": [
+      "stable",
+      "state_missing",
+      "state_conflicted",
+      "contract_invalid"
+    ],
+    "row_order": [
+      "resolution_enabled",
+      "default_host_path"
+    ],
+    "resolution_enabled_by_status": {
+      "stable": true,
+      "state_missing": false,
+      "state_conflicted": false,
+      "contract_invalid": false
+    }
+  },
+  "quarantine_annotation_fields": [
+    "state_kind",
+    "path",
+    "scope",
+    "active_chain_relevance",
+    "promotion_decision",
+    "reason_code",
+    "durable_identity_ref"
+  ],
+  "primary_failure_priority": [
+    "non_stable_truth",
+    "truth_layer_contract_invalid",
+    "resolution_failure",
+    "effect_contract_invalid"
+  ],
+  "primary_failure_families": {
+    "ordered_families": [
+      "non_stable_truth",
+      "truth_layer_contract_invalid",
+      "resolution_failure",
+      "effect_contract_invalid"
+    ],
+    "row_order": [
+      "members"
+    ],
+    "members_by_family": {
+      "non_stable_truth": [
+        "state_missing",
+        "state_conflicted"
+      ],
+      "truth_layer_contract_invalid": [
+        "gate_contract_invalid",
+        "handoff_contract_invalid",
+        "checkpoint_contract_invalid",
+        "action_projection_contract_invalid"
+      ],
+      "resolution_failure": [
+        "no_match",
+        "ambiguous",
+        "malformed_input",
+        "semantic_unavailable",
+        "context_budget_exceeded"
+      ],
+      "effect_contract_invalid": [
+        "schema_mismatch",
+        "version_mismatch",
+        "missing_required_field",
+        "unsupported_transition"
+      ]
+    }
+  },
+  "consult_readonly_contract": {
+    "ordered_keys": [
+      "required_when",
+      "ignored_required_host_actions",
+      "required_fields"
+    ],
+    "required_when": [
+      "side_effect_mapping_routes_to_continue_host_consult",
+      "consult_exit_is_under_validation"
+    ],
+    "ignored_required_host_actions": [
+      "confirm_decision",
+      "confirm_plan_package",
+      "confirm_execute",
+      "answer_questions",
+      "review_or_execute_plan"
+    ],
+    "required_fields_order": [
+      "required_host_action",
+      "allowed_response_mode",
+      "resume_route",
+      "preserved_identity",
+      "context_sufficiency",
+      "forbidden_effects"
+    ],
+    "required_field_specs": {
+      "required_host_action": {
+        "ordered_keys": [
+          "role",
+          "equals"
+        ],
+        "role": "echoed_assertion",
+        "equals": "continue_host_consult"
+      },
+      "allowed_response_mode": {
+        "ordered_keys": [
+          "role",
+          "equals"
+        ],
+        "role": "echoed_assertion",
+        "equals": "normal_runtime_followup"
+      },
+      "resume_route": {
+        "ordered_keys": [
+          "role"
+        ],
+        "role": "echoed_assertion"
+      },
+      "preserved_identity": {
+        "ordered_keys": [
+          "role"
+        ],
+        "role": "echoed_assertion"
+      },
+      "context_sufficiency": {
+        "ordered_keys": [
+          "role",
+          "equals"
+        ],
+        "role": "consult_local_constraint",
+        "equals": "sufficient"
+      },
+      "forbidden_effects": {
+        "ordered_keys": [
+          "role",
+          "includes"
+        ],
+        "role": "consult_local_constraint",
+        "includes": [
+          "checkpoint_submission",
+          "run_stage_advance",
+          "plan_materialization",
+          "execution"
+        ]
+      }
+    }
+  },
+  "best_proven_resume_target": {
+    "ordered_keys": [
+      "kinds",
+      "proof_order"
+    ],
+    "proof_entry_order": [
+      "kind",
+      "proof"
+    ],
+    "kinds": [
+      "checkpoint",
+      "plan_review",
+      "workflow_safe_start"
+    ],
+    "proof_order": [
+      {
+        "kind": "checkpoint",
+        "proof": [
+          "current_handoff.required_host_action",
+          "matching_checkpoint_state",
+          "durable_identity"
+        ]
+      },
+      {
+        "kind": "checkpoint",
+        "proof": [
+          "current_run.stage",
+          "matching_durable_identities"
+        ]
+      },
+      {
+        "kind": "plan_review",
+        "proof": [
+          "current_handoff.required_host_action=review_or_execute_plan",
+          "current_handoff.plan_id=current_plan.plan_id",
+          "current_handoff.plan_path=current_plan.path",
+          "gate_or_snapshot_proves_current_resume_entry"
+        ]
+      },
+      {
+        "kind": "workflow_safe_start",
+        "proof": [
+          "machine_contract_produces_safe_workflow_entry"
+        ]
+      }
+    ]
+  }
+}

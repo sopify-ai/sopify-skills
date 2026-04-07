@@ -1,0 +1,163 @@
+schema_version: failure_recovery.v1
+asset_version: 2026-04-06-p0-min
+rows:
+  - primary_failure_type: non_stable_truth
+    required_host_action: answer_questions
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.non_stable_truth.fail_closed.answer_questions
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: non_stable_truth
+    required_host_action: confirm_decision
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.non_stable_truth.fail_closed.confirm_decision
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: non_stable_truth
+    required_host_action: confirm_plan_package
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.non_stable_truth.fail_closed.confirm_plan_package
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: non_stable_truth
+    required_host_action: confirm_execute
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.non_stable_truth.fail_closed.confirm_execute
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: non_stable_truth
+    required_host_action: review_or_execute_plan
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.non_stable_truth.fail_closed.review_or_execute_plan
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: truth_layer_contract_invalid
+    required_host_action: answer_questions
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.truth_layer_contract_invalid.fail_closed.answer_questions
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: truth_layer_contract_invalid
+    required_host_action: confirm_decision
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.truth_layer_contract_invalid.fail_closed.confirm_decision
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: truth_layer_contract_invalid
+    required_host_action: confirm_plan_package
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.truth_layer_contract_invalid.fail_closed.confirm_plan_package
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: truth_layer_contract_invalid
+    required_host_action: confirm_execute
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.truth_layer_contract_invalid.fail_closed.confirm_execute
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: truth_layer_contract_invalid
+    required_host_action: review_or_execute_plan
+    fallback_action: enter_blocking_recovery_branch
+    prompt_mode: request_state_recovery
+    retry_policy: manual_recovery_only
+    reason_code: recovery.truth_layer_contract_invalid.fail_closed.review_or_execute_plan
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: resolution_failure
+    required_host_action: answer_questions
+    fallback_action: repeat_current_checkpoint
+    prompt_mode: reask_answer_questions
+    retry_policy: allow_retry_after_user_input
+    reason_code: recovery.resolution_failure.inspect_required.answer_questions
+    unresolved_outcome_family: inspect_required
+    counts_toward_streak: true
+  - primary_failure_type: resolution_failure
+    required_host_action: confirm_decision
+    fallback_action: repeat_current_checkpoint
+    prompt_mode: reask_confirm_decision
+    retry_policy: allow_retry_after_user_input
+    reason_code: recovery.resolution_failure.inspect_required.confirm_decision
+    unresolved_outcome_family: inspect_required
+    counts_toward_streak: true
+  - primary_failure_type: resolution_failure
+    required_host_action: confirm_plan_package
+    fallback_action: repeat_current_checkpoint
+    prompt_mode: reask_confirm_plan_package
+    retry_policy: allow_retry_after_user_input
+    reason_code: recovery.resolution_failure.inspect_required.confirm_plan_package
+    unresolved_outcome_family: inspect_required
+    counts_toward_streak: true
+  - primary_failure_type: resolution_failure
+    required_host_action: confirm_execute
+    fallback_action: repeat_current_checkpoint
+    prompt_mode: reask_confirm_execute
+    retry_policy: allow_retry_after_user_input
+    reason_code: recovery.resolution_failure.inspect_required.confirm_execute
+    unresolved_outcome_family: inspect_required
+    counts_toward_streak: true
+  - primary_failure_type: resolution_failure
+    required_host_action: review_or_execute_plan
+    fallback_action: repeat_current_checkpoint
+    prompt_mode: reask_plan_review
+    retry_policy: allow_retry_after_user_input
+    reason_code: recovery.resolution_failure.inspect_required.review_or_execute_plan
+    unresolved_outcome_family: inspect_required
+    counts_toward_streak: true
+  - primary_failure_type: effect_contract_invalid
+    required_host_action: answer_questions
+    fallback_action: block_side_effect_and_retry_when_safe
+    prompt_mode: safe_retry_after_contract_fix
+    retry_policy: retry_after_contract_fix
+    reason_code: recovery.effect_contract_invalid.fail_closed.answer_questions
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: effect_contract_invalid
+    required_host_action: confirm_decision
+    fallback_action: block_side_effect_and_retry_when_safe
+    prompt_mode: safe_retry_after_contract_fix
+    retry_policy: retry_after_contract_fix
+    reason_code: recovery.effect_contract_invalid.fail_closed.confirm_decision
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: effect_contract_invalid
+    required_host_action: confirm_plan_package
+    fallback_action: block_side_effect_and_retry_when_safe
+    prompt_mode: safe_retry_after_contract_fix
+    retry_policy: retry_after_contract_fix
+    reason_code: recovery.effect_contract_invalid.fail_closed.confirm_plan_package
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: effect_contract_invalid
+    required_host_action: confirm_execute
+    fallback_action: block_side_effect_and_retry_when_safe
+    prompt_mode: safe_retry_after_contract_fix
+    retry_policy: retry_after_contract_fix
+    reason_code: recovery.effect_contract_invalid.fail_closed.confirm_execute
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true
+  - primary_failure_type: effect_contract_invalid
+    required_host_action: review_or_execute_plan
+    fallback_action: block_side_effect_and_retry_when_safe
+    prompt_mode: safe_retry_after_contract_fix
+    retry_policy: retry_after_contract_fix
+    reason_code: recovery.effect_contract_invalid.fail_closed.review_or_execute_plan
+    unresolved_outcome_family: fail_closed
+    counts_toward_streak: true

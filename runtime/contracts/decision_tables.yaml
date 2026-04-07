@@ -1,0 +1,112 @@
+schema_version: decision_tables.v1
+asset_version: 2026-04-06-p0
+invariants:
+  stable_truth_required_for_resolution: true
+  consult_readonly_default_deny: true
+  transcript_recovery_forbidden: true
+truth_statuses:
+  stable:
+    resolution_enabled: true
+    default_host_path: continue_current_machine_contract
+  state_missing:
+    resolution_enabled: false
+    default_host_path: failure_recovery_or_blocking_branch
+  state_conflicted:
+    resolution_enabled: false
+    default_host_path: failure_recovery_or_blocking_branch
+  contract_invalid:
+    resolution_enabled: false
+    default_host_path: failure_recovery_or_blocking_branch
+quarantine_annotation_fields:
+  - state_kind
+  - path
+  - scope
+  - active_chain_relevance
+  - promotion_decision
+  - reason_code
+  - durable_identity_ref
+primary_failure_priority:
+  - non_stable_truth
+  - truth_layer_contract_invalid
+  - resolution_failure
+  - effect_contract_invalid
+primary_failure_families:
+  non_stable_truth:
+    members:
+      - state_missing
+      - state_conflicted
+  truth_layer_contract_invalid:
+    members:
+      - gate_contract_invalid
+      - handoff_contract_invalid
+      - checkpoint_contract_invalid
+      - action_projection_contract_invalid
+  resolution_failure:
+    members:
+      - no_match
+      - ambiguous
+      - malformed_input
+      - semantic_unavailable
+      - context_budget_exceeded
+  effect_contract_invalid:
+    members:
+      - schema_mismatch
+      - version_mismatch
+      - missing_required_field
+      - unsupported_transition
+consult_readonly_contract:
+  required_when:
+    - side_effect_mapping_routes_to_continue_host_consult
+    - consult_exit_is_under_validation
+  # Exclusion list: consult_readonly_contract is not applicable under these host actions.
+  ignored_required_host_actions:
+    - confirm_decision
+    - confirm_plan_package
+    - confirm_execute
+    - answer_questions
+    - review_or_execute_plan
+  required_fields:
+    required_host_action:
+      role: echoed_assertion
+      equals: continue_host_consult
+    allowed_response_mode:
+      role: echoed_assertion
+      equals: normal_runtime_followup
+    resume_route:
+      role: echoed_assertion
+    preserved_identity:
+      role: echoed_assertion
+    context_sufficiency:
+      role: consult_local_constraint
+      equals: sufficient
+    forbidden_effects:
+      role: consult_local_constraint
+      includes:
+        - checkpoint_submission
+        - run_stage_advance
+        - plan_materialization
+        - execution
+best_proven_resume_target:
+  kinds:
+    - checkpoint
+    - plan_review
+    - workflow_safe_start
+  proof_order:
+    - kind: checkpoint
+      proof:
+        - current_handoff.required_host_action
+        - matching_checkpoint_state
+        - durable_identity
+    - kind: checkpoint
+      proof:
+        - current_run.stage
+        - matching_durable_identities
+    - kind: plan_review
+      proof:
+        - current_handoff.required_host_action=review_or_execute_plan
+        - current_handoff.plan_id=current_plan.plan_id
+        - current_handoff.plan_path=current_plan.path
+        - gate_or_snapshot_proves_current_resume_entry
+    - kind: workflow_safe_start
+      proof:
+        - machine_contract_produces_safe_workflow_entry

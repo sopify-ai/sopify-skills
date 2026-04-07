@@ -5,6 +5,7 @@
 本文用于概述 Plan A 当前设计口径下的 machine contract 执行闭环，帮助宿主、设计者与实现者快速对齐全链路。
 
 本文是总览导读，不新增 machine truth，也不替代 runtime code、state 文件、三张真理表或 checkpoint contract；细节规则以 `design.md`、`runtime/*`、`current_handoff.json` 与各 checkpoint state 为准。
+与 `feature/context-boundary-core` 首笔受控 spike 相关的资产路径、schema 路线、熔断键与记分规则，以 `design.md` §0 与 `tasks.md` §9 / §11 / §16 / §18 为唯一真相源；本文只做交叉引用，不重复展开。
 
 ## 2. 一句话总括
 

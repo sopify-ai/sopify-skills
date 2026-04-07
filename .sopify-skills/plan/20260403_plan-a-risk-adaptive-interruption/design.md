@@ -241,6 +241,14 @@
 2. 它是条件必需契约，不是全局必需契约。
 3. 它只作为只读 consult 出口的受控证明，不替代 `gate + handoff` 的全局真相。
 
+**P0 实施载体补充冻结：**
+
+1. Signal/Failure/Side-Effect 三张真理表的正式物理载体路径固定为 `runtime/contracts/decision_tables.yaml`，不放入 `runtime/config/`。
+2. 表资产的 schema 路线固定为“独立版本化 schema + runtime stdlib strict validator”；runtime 不引入非 stdlib 运行时依赖。
+3. 与普通 checkpoint 主线隔离的忽略名单字段，命名固定为 `ignored_required_host_actions`，其语义绑定 `required_host_action`，不得再使用 `ignored_on_routes` 这类易误接命名。
+4. `feature/context-boundary-core` 的首笔实现只允许作为 `tracked spike / non-checkpoint-credit / no runtime wiring` 的受控原型入库；其作用是固定资产与离线校验入口，不代表 Checkpoint A 或 boundary-core 已完成。
+5. 当前 spike 仅冻结 P0 底座与失败恢复矩阵（`decision_tables + failure_recovery_table`）；`Signal Priority Table / Side-Effect Mapping Table` 的独立资产化与完整接线仍以后续 `9.1-9.4 / 18.3+` 为准。
+
 **准入规则：**
 
 1. 只有当 `Side-Effect Mapping` 明确改道到 `continue_host_consult`，或当前出口正在校验 consult 准入时，该合同才成为必需契约。
@@ -283,6 +291,12 @@
 
 1. `review_or_execute_plan` 默认归类为 `plan_review`，仅在 durable proof 不足时退回 `workflow_safe_start`。
 2. `plan_review` 证明不足时，禁止宿主脑补“反正像是在 review plan”。
+
+#### 0.4.1 no-progress fuse 键冻结补充
+
+1. `same checkpoint no-progress streak` 的聚合键，P0 默认冻结为 `checkpoint_id + unresolved_outcome_family + durable_identity`。
+2. 其中 `unresolved_outcome_family` 作为稳定聚合维度，优先于更细粒度的 outcome 文本，避免后续 outcome 细化导致 streak key 抖动。
+3. 若未来需要在 family 之下继续细分，只允许作为观测维度追加，不得回写破坏 P0 streak 主键。
 
 #### 0.5 P0 适用边界与非目标
 
@@ -692,7 +706,7 @@ SignalPriorityResolution:
 1. `plan_proposal_pending + command prefix` 的最终动作口径冻结为“保持显式 fail-close，不视为自动继续信号”。
 2. A-6 归属冻结为“继续留在本方案，不拆出 contract-safety 子项”。
 3. `P0 Freeze` 的 truth / failure / consult-readonly / resume-target 边界，以及 fail-close 默认动作矩阵版本与 `reason_code` 词法冻结。
-4. 三张真理表资产化与 Schema 冻结（`runtime/config/decision_tables.yaml` + Pydantic/JSON Schema + CI 校验）完成。
+4. 三张真理表资产化与 Schema 冻结（`runtime/contracts/decision_tables.yaml` + 独立版本化 schema + runtime stdlib strict validator + CI 校验）完成。
 5. `reason_code -> host_facing_message_template` 与插值安全校验冻结，模板渲染失败必须 fail-open 到安全兜底文案。
 6. legacy pending state 的 quarantine / escape hatch / 审计事件冻结，禁止因 schema 不兼容直接 crash。
 

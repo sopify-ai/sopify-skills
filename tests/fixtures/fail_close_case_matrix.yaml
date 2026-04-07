@@ -1,0 +1,187 @@
+schema_version: fail_close_case_matrix.v1
+matrix_version: 2026-04-07-a1-a8-rules-v1
+cases:
+  - case_id: A-1_explain_only_consult_guard
+    checkpoint_id: a1-explain-only
+    required_host_action: answer_questions
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - state_missing
+      - schema_mismatch
+    durable_identity: a1-identity
+    expected:
+      primary_failure_type: non_stable_truth
+      primary_failure_member: state_missing
+      secondary_failure_members:
+        - schema_mismatch
+      fallback_action: enter_blocking_recovery_branch
+      prompt_mode: request_state_recovery
+      retry_policy: manual_recovery_only
+      reason_code: recovery.non_stable_truth.fail_closed.answer_questions
+      unresolved_outcome_family: fail_closed
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a1-explain-only
+        - fail_closed
+        - a1-identity
+  - case_id: A-2_decision_selection_with_suffix_text
+    checkpoint_id: a2-decision-checkpoint
+    required_host_action: confirm_decision
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - handoff_contract_invalid
+      - ambiguous
+    durable_identity: a2-identity
+    expected:
+      primary_failure_type: truth_layer_contract_invalid
+      primary_failure_member: handoff_contract_invalid
+      secondary_failure_members:
+        - ambiguous
+      fallback_action: enter_blocking_recovery_branch
+      prompt_mode: request_state_recovery
+      retry_policy: manual_recovery_only
+      reason_code: recovery.truth_layer_contract_invalid.fail_closed.confirm_decision
+      unresolved_outcome_family: fail_closed
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a2-decision-checkpoint
+        - fail_closed
+        - a2-identity
+  - case_id: A-3_existing_plan_referent_analysis
+    checkpoint_id: a3-plan-referent
+    required_host_action: confirm_plan_package
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - no_match
+    durable_identity: a3-identity
+    expected:
+      primary_failure_type: resolution_failure
+      primary_failure_member: no_match
+      secondary_failure_members: []
+      fallback_action: repeat_current_checkpoint
+      prompt_mode: reask_confirm_plan_package
+      retry_policy: allow_retry_after_user_input
+      reason_code: recovery.resolution_failure.inspect_required.confirm_plan_package
+      unresolved_outcome_family: inspect_required
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a3-plan-referent
+        - inspect_required
+        - a3-identity
+  - case_id: A-4_cancel_checkpoint_idempotent
+    checkpoint_id: a4-cancel-checkpoint
+    required_host_action: confirm_execute
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - ambiguous
+      - missing_required_field
+    durable_identity: a4-identity
+    expected:
+      primary_failure_type: resolution_failure
+      primary_failure_member: ambiguous
+      secondary_failure_members:
+        - missing_required_field
+      fallback_action: repeat_current_checkpoint
+      prompt_mode: reask_confirm_execute
+      retry_policy: allow_retry_after_user_input
+      reason_code: recovery.resolution_failure.inspect_required.confirm_execute
+      unresolved_outcome_family: inspect_required
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a4-cancel-checkpoint
+        - inspect_required
+        - a4-identity
+  - case_id: A-5_mixed_clause_conflict
+    checkpoint_id: a5-mixed-clause
+    required_host_action: review_or_execute_plan
+    allowed_response_mode: normal_runtime_followup
+    failure_signals:
+      - schema_mismatch
+    durable_identity: a5-identity
+    expected:
+      primary_failure_type: effect_contract_invalid
+      primary_failure_member: schema_mismatch
+      secondary_failure_members: []
+      fallback_action: block_side_effect_and_retry_when_safe
+      prompt_mode: safe_retry_after_contract_fix
+      retry_policy: retry_after_contract_fix
+      reason_code: recovery.effect_contract_invalid.fail_closed.review_or_execute_plan
+      unresolved_outcome_family: fail_closed
+      counts_toward_streak: true
+      effective_allowed_response_mode: normal_runtime_followup
+      streak_key:
+        - a5-mixed-clause
+        - fail_closed
+        - a5-identity
+  - case_id: A-6_execution_confirm_state_conflict_abort
+    checkpoint_id: a6-execution-conflict
+    required_host_action: confirm_execute
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - state_conflicted
+    durable_identity: a6-identity
+    expected:
+      primary_failure_type: non_stable_truth
+      primary_failure_member: state_conflicted
+      secondary_failure_members: []
+      fallback_action: enter_blocking_recovery_branch
+      prompt_mode: request_state_recovery
+      retry_policy: manual_recovery_only
+      reason_code: recovery.non_stable_truth.fail_closed.confirm_execute
+      unresolved_outcome_family: fail_closed
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a6-execution-conflict
+        - fail_closed
+        - a6-identity
+  - case_id: A-7_question_like_retopic_baseline
+    checkpoint_id: a7-question-retopic
+    required_host_action: answer_questions
+    allowed_response_mode: checkpoint_only
+    failure_signals:
+      - context_budget_exceeded
+    durable_identity: a7-identity
+    expected:
+      primary_failure_type: resolution_failure
+      primary_failure_member: context_budget_exceeded
+      secondary_failure_members: []
+      fallback_action: repeat_current_checkpoint
+      prompt_mode: reask_answer_questions
+      retry_policy: allow_retry_after_user_input
+      reason_code: recovery.resolution_failure.inspect_required.answer_questions
+      unresolved_outcome_family: inspect_required
+      counts_toward_streak: true
+      effective_allowed_response_mode: checkpoint_only
+      streak_key:
+        - a7-question-retopic
+        - inspect_required
+        - a7-identity
+  - case_id: A-8_analysis_only_no_write_brake
+    checkpoint_id: a8-analysis-only
+    required_host_action: review_or_execute_plan
+    allowed_response_mode: normal_runtime_followup
+    failure_signals:
+      - gate_contract_invalid
+      - unsupported_transition
+    durable_identity: a8-identity
+    expected:
+      primary_failure_type: truth_layer_contract_invalid
+      primary_failure_member: gate_contract_invalid
+      secondary_failure_members:
+        - unsupported_transition
+      fallback_action: enter_blocking_recovery_branch
+      prompt_mode: request_state_recovery
+      retry_policy: manual_recovery_only
+      reason_code: recovery.truth_layer_contract_invalid.fail_closed.review_or_execute_plan
+      unresolved_outcome_family: fail_closed
+      counts_toward_streak: true
+      effective_allowed_response_mode: normal_runtime_followup
+      streak_key:
+        - a8-analysis-only
+        - fail_closed
+        - a8-identity

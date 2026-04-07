@@ -20,6 +20,7 @@ plan_status: design_active
 - 本 plan 当前只用于设计收敛，不进入代码实施。
 - `ExecutionGate` 当前保持 `blocked / missing_info` 是预期行为，因为本 plan 仍在收口实施边界。
 - 后续允许持续迭代 `background.md / design.md / tasks.md`，直到进入真正开工窗口。
+- 在进入正式 implementation 之前，允许先做一笔文档 freeze patch 与一笔 `feature/context-boundary-core` 受控 spike；该 spike 身份固定为 `tracked spike / non-checkpoint-credit / no runtime wiring`，不计入任何 Checkpoint 完成。
 
 **导航：** Checkpoint A 前的颗粒度补齐范围，以 design.md §分支拆分、分批合并与 Checkpoint 卡点 和各 Checkpoint 必填决策为准；本任务清单各条任务是执行真相源。
 
@@ -170,14 +171,15 @@ plan_status: design_active
 ### 9. 统一 checkpoint parser 的 fail-close contract
 
 规范来源：见 `design.md` §0 `P0 Freeze | 分层联动矩阵（最小冻结）`。本组与 §10 / §19 共享该节冻结口径。
+补充口径：`9.x` 的完成定义显式绑定 `18.x`；仅提交 YAML/loader 原型不构成 `9.x` 完成。
 
 - [ ] 9.1 盘点各 `required_host_action` 在未知输入下的默认动作，找出所有不一致项
 - [ ] 9.2 为 `confirm_plan_package / confirm_execute / confirm_decision / answer_questions` 定义统一的 fail-close 入口与禁止隐式推进规则
 - [ ] 9.3 冻结 `signal_group / target_kind / target_slot / evidence_tier / mutually_exclusive_with / fallback_on_conflict` 的最小裁决字段，并明确未知输入何时直接落入 fail-close
 - [ ] 9.4 冻结 `signal_origin / allowed_origins / origin_evidence_cap / origin_precedence / evidence_rank` 的最小接线字段与固定裁决顺序，明确“规则信号永远压制 classifier 信号”的实现口径
-- [ ] 9.5 将 Signal/Failure/Side-Effect 三张真理表外置为声明式资产（`runtime/config/decision_tables.yaml`）
-- [ ] 9.6 为三张表定义统一 Schema（Pydantic/JSON Schema）并冻结版本
-- [ ] 9.7 在 CI 增加表资产结构校验，禁止运行时隐式容错加载
+- [ ] 9.5 将 Signal/Failure/Side-Effect 三张真理表外置为声明式资产（`runtime/contracts/decision_tables.yaml`）
+- [ ] 9.6 为三张表定义统一、独立版本化 Schema，并冻结版本；runtime 侧只允许使用 stdlib strict validator 消费，不引入非 stdlib 运行时依赖
+- [ ] 9.7 在 CI / preflight 增加表资产结构校验，禁止运行时隐式容错加载
 
 验收标准：
 
@@ -208,7 +210,7 @@ plan_status: design_active
 
 ### 11. 同 checkpoint 无进展熔断
 
-- [ ] 11.1 定义 `checkpoint_id + unresolved_outcome` 级别的 no-progress streak 统计口径
+- [ ] 11.1 定义 `checkpoint_id + unresolved_outcome_family + durable_identity` 级别的 no-progress streak 统计口径
 - [ ] 11.2 明确 `counts_toward_streak / soft_warning_action / fuse_blown_action / reset_streak_when` 的最小字段与升级边界
 - [ ] 11.3 断言连续 `inspect / invalid / ambiguous / fail_closed` 不会形成无限循环，且熔断不会降低 fail-close 等级
 
@@ -302,11 +304,13 @@ plan_status: design_active
 
 ### 16. 离线契约干跑
 
-- [ ] 16.1 在 `feature/context-boundary-core` 提交 `scripts/check-fail-close-contract.py`
-- [ ] 16.2 补充离线 fixture（如 `tests/fixtures/context_fail_close_contract.yaml`），可枚举 `required_host_action -> fallback_action`
-- [ ] 16.3 先覆盖 A-1~A-8 的规则级判定预期，再扩到历史错例回放输入
-- [ ] 16.4 将 `scripts/check-fail-close-contract.py` 升级为 pytest 数据驱动测试入口
-- [ ] 16.5 固定接入 CI 回归套件，新增 case 必须先补数据样本再合并
+说明：本组首笔提交只允许作为 `feature/context-boundary-core` 的受控 spike 入库，固定身份为 `tracked spike / non-checkpoint-credit / no runtime wiring`；其作用是固定资产载体、fixture 与离线校验入口，不代表 Checkpoint A 或 boundary-core 已完成。
+
+- [x] 16.1 在 `feature/context-boundary-core` 提交 `scripts/check-fail-close-contract.py`
+- [x] 16.2 补充离线 fixture（如 `tests/fixtures/context_fail_close_contract.yaml`），可枚举 `required_host_action -> fallback_action`
+- [x] 16.3 先覆盖 A-1~A-8 的规则级判定预期，再扩到历史错例回放输入（当前完成口径为 failure family 组合覆盖；A-1~A-8 语义级规则覆盖待 1.x / 5.x / 9.x 收口）
+- [x] 16.4 将 `scripts/check-fail-close-contract.py` 升级为 pytest 数据驱动测试入口
+- [x] 16.5 固定接入 CI 回归套件，新增 case 必须先补数据样本再合并（已接入 CI/preflight；默认 `auto` runner 优先 pytest 参数化，缺失 pytest 时降级 native 并显式提示，非强制 pytest 门槛）
 
 验收标准：
 
@@ -332,8 +336,8 @@ plan_status: design_active
 
 ### 18. 表资产化与插值安全校验
 
-- [ ] 18.1 冻结三张真理表的物理载体路径：`runtime/config/decision_tables.yaml`
-- [ ] 18.2 定义三张表的 `Pydantic/JSON Schema` 契约，并在 CI 执行结构校验
+- [ ] 18.1 冻结三张真理表的物理载体路径：`runtime/contracts/decision_tables.yaml`
+- [ ] 18.2 定义三张表的独立版本化 Schema 契约，并在 CI 执行结构校验；runtime 侧固定采用 stdlib strict validator 消费
 - [ ] 18.3 新增 `reason_code -> host_facing_message_template` 映射表，统一用户可见解释出口
 - [ ] 18.4 新增模板插值安全校验：模板中的 `{variable}` 必须存在于 `ActionProjection/ContextSnapshot` 允许变量集合
 - [ ] 18.5 约束模板渲染失败时 fail-open 到安全兜底文案，不允许因 `KeyError` 中断主流程

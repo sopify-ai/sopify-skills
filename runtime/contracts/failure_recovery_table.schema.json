@@ -1,0 +1,54 @@
+{
+  "schema_file_version": "1",
+  "asset_schema_version": "failure_recovery.v1",
+  "root_order": [
+    "schema_version",
+    "asset_version",
+    "rows"
+  ],
+  "row_order": [
+    "primary_failure_type",
+    "required_host_action",
+    "fallback_action",
+    "prompt_mode",
+    "retry_policy",
+    "reason_code",
+    "unresolved_outcome_family",
+    "counts_toward_streak"
+  ],
+  "required_host_actions": [
+    "answer_questions",
+    "confirm_decision",
+    "confirm_plan_package",
+    "confirm_execute",
+    "review_or_execute_plan"
+  ],
+  "fallback_actions": [
+    "enter_blocking_recovery_branch",
+    "repeat_current_checkpoint",
+    "block_side_effect_and_retry_when_safe"
+  ],
+  "prompt_modes": [
+    "request_state_recovery",
+    "reask_answer_questions",
+    "reask_confirm_decision",
+    "reask_confirm_plan_package",
+    "reask_confirm_execute",
+    "reask_plan_review",
+    "safe_retry_after_contract_fix"
+  ],
+  "allowed_response_modes": [
+    "normal_runtime_followup",
+    "checkpoint_only",
+    "error_visible_retry"
+  ],
+  "retry_policies": [
+    "manual_recovery_only",
+    "allow_retry_after_user_input",
+    "retry_after_contract_fix"
+  ],
+  "unresolved_outcome_families": [
+    "fail_closed",
+    "inspect_required"
+  ]
+}
