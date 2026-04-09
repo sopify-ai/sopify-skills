@@ -1180,6 +1180,39 @@ class EngineIntegrationTests(unittest.TestCase):
             self.assertTrue(current_run.resolution_id)
             self.assertEqual(current_run.resolution_id, current_handoff.resolution_id)
 
+    def test_state_conflict_abort_restores_develop_handoff_for_executing_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            workspace = Path(temp_dir)
+            _enter_active_develop_context(workspace)
+
+            store = StateStore(load_runtime_config(workspace))
+            current_handoff = store.get_current_handoff()
+            assert current_handoff is not None
+
+            stale_handoff = current_handoff.to_dict()
+            stale_handoff["resolution_id"] = "stale-resolution-id"
+            store.current_handoff_path.write_text(
+                json.dumps(stale_handoff, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+
+            conflicted = run_runtime("看看状态", workspace_root=workspace, user_home=workspace / "home")
+            self.assertEqual(conflicted.route.route_name, "state_conflict")
+            self.assertEqual(conflicted.recovered_context.state_conflict["code"], "resolution_id_mismatch")
+
+            cleared = run_runtime("取消", workspace_root=workspace, user_home=workspace / "home")
+            after_store = StateStore(load_runtime_config(workspace))
+            current_run = after_store.get_current_run()
+            restored_handoff = after_store.get_current_handoff()
+
+            self.assertEqual(cleared.route.route_name, "state_conflict")
+            self.assertEqual(cleared.route.active_run_action, "abort_conflict")
+            self.assertFalse(cleared.recovered_context.state_conflict)
+            self.assertIsNotNone(current_run)
+            self.assertEqual(current_run.stage, "executing")
+            self.assertIsNotNone(restored_handoff)
+            self.assertEqual(restored_handoff.required_host_action, "continue_host_develop")
+
     def test_cross_session_owner_bound_confirmed_decision_survives_conflict_abort(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             workspace = Path(temp_dir)

@@ -6,6 +6,20 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-04-09.203519] - 2026-04-09
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/handoff.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/fixtures/sample_invariant_gate_matrix.yaml`
+  - `tests/test_runtime_engine.py`
+  - `tests/test_runtime_sample_invariant_gate.py`
+
 ## [2026-04-09.163847] - 2026-04-09
 
 ### Runtime

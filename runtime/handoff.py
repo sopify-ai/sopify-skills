@@ -72,6 +72,16 @@ _ROUTE_HANDOFF_KIND = {
     "consult": "consult",
 }
 
+_STATE_CONFLICT_ABORT_RESUME_ACTIONS = {
+    "clarification_pending": "answer_questions",
+    "decision_pending": "confirm_decision",
+    "plan_proposal_pending": "confirm_plan_package",
+    "ready_for_execution": "confirm_execute",
+    "execution_confirm_pending": "confirm_execute",
+    "develop_pending": "continue_host_develop",
+    "executing": "continue_host_develop",
+}
+
 
 def build_runtime_handoff(
     *,
@@ -107,6 +117,7 @@ def build_runtime_handoff(
     )
     required_host_action = _required_host_action(
         decision,
+        current_run=current_run,
         skill_result_present=bool(skill_result),
         finalize_completed=finalize_completed,
     )
@@ -195,6 +206,7 @@ def write_runtime_handoff(path: Path, handoff: RuntimeHandoff) -> None:
 def _required_host_action(
     decision: RouteDecision,
     *,
+    current_run: RunState | None,
     skill_result_present: bool,
     finalize_completed: bool = False,
 ) -> str:
@@ -220,7 +232,13 @@ def _required_host_action(
     if route_name in {"decision_pending", "decision_resume"}:
         return "confirm_decision"
     if route_name == "state_conflict":
-        return "continue_host_workflow" if decision.active_run_action == "abort_conflict" else "resolve_state_conflict"
+        if decision.active_run_action != "abort_conflict":
+            return "resolve_state_conflict"
+        if current_run is not None:
+            resume_action = _STATE_CONFLICT_ABORT_RESUME_ACTIONS.get(str(current_run.stage or "").strip())
+            if resume_action:
+                return resume_action
+        return "continue_host_workflow"
     if route_name == "compare":
         return "review_compare_results" if skill_result_present else "host_compare_bridge_required"
     if route_name == "replay":

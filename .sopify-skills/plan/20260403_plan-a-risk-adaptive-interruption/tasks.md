@@ -111,9 +111,9 @@ plan_status: design_active
 
 ### 5. 样本矩阵补强
 
-- [ ] 5.1 以 `正例 / 反例 / 边界例 / 禁止副作用` 四列为基线，补齐 A-1 ~ A-8 的可执行矩阵
-- [ ] 5.2 为 A-1 / A-3 / A-4 / A-5 / A-8 增补 replay 级真实语料
-- [ ] 5.3 为 A-6 明确单独的状态链路证据要求，不与普通 parser case 混测
+- [x] 5.1 以 `正例 / 反例 / 边界例 / 禁止副作用` 四列为基线，补齐 A-1 ~ A-8 的可执行矩阵
+- [x] 5.2 为 A-1 / A-3 / A-4 / A-5 / A-8 增补 replay 级真实语料
+- [x] 5.3 为 A-6 明确单独的状态链路证据要求，不与普通 parser case 混测
 
 验收标准：
 
@@ -122,12 +122,12 @@ plan_status: design_active
 
 ### 6. 状态不变量
 
-- [ ] 6.1 冻结 `required_host_action / checkpoint_id / current_plan_proposal / current_decision / plan/` 的副作用断言
-- [ ] 6.2 明确 explain-only / cancel / revise / confirm 各自允许写哪些状态文件
-- [ ] 6.3 为 `ready_for_execution + state_conflict(abort_conflict)` 写出单次收敛的不变量
-- [ ] 6.4 定义 legacy pending state 的 schema 识别与 quarantine 入口，禁止因字段不兼容直接 crash
-- [ ] 6.5 定义 quarantine 的标准 Escape Hatch（命令或自然语言重置动作），禁止要求用户手动清理状态目录
-- [ ] 6.6 定义 quarantine 清理边界与审计事件（清理哪些状态、保留哪些资产、写入何种 reason_code）
+- [x] 6.1 冻结 `required_host_action / checkpoint_id / current_plan_proposal / current_decision / plan/` 的副作用断言
+- [x] 6.2 明确 explain-only / cancel / revise / confirm 各自允许写哪些状态文件
+- [x] 6.3 为 `ready_for_execution + state_conflict(abort_conflict)` 写出单次收敛的不变量
+- [x] 6.4 定义 legacy pending state 的 schema 识别与 quarantine 入口，禁止因字段不兼容直接 crash
+- [x] 6.5 定义 quarantine 的标准 Escape Hatch（命令或自然语言重置动作），禁止要求用户手动清理状态目录
+- [x] 6.6 定义 quarantine 清理边界与审计事件（清理哪些状态、保留哪些资产、写入何种 reason_code）
 
 验收标准：
 
@@ -307,11 +307,11 @@ plan_status: design_active
 - [ ] 14.1 建立 `feature/context-boundary-core`，承载 `1.x + 2.1/2.2 + 9.x + 10.x + 11.x`
 - [ ] 14.2 建立 `feature/public-surface-governance`，承载 `8.x`（允许与 14.1 并行）
 - [x] 14.3 建立 `feature/context-v1-guard-rails`（4a），承载 `3.x + 4.1-4.3 + 17.1-17.3 + 18.x + 19.x(入口/出口定义)`
-- [ ] 14.4 建立 `feature/context-sample-invariant-gate`，承载 `5.x + 6.x`
+- [x] 14.4 建立 `feature/context-sample-invariant-gate`，承载 `5.x + 6.x`
 - [ ] 14.5 建立 `feature/context-v1-scope-finalize`（4b），承载 `7.x + 17.4`
 - [ ] 14.6 建立 `feature/context-vnext-gate`，承载 `4.4 + 12.x + 13.x`
 - [ ] 14.7 冻结依赖拓扑：`boundary-core -> 4a guard-rails -> sample-invariant-gate -> 4b scope-finalize -> vnext-gate`
-- [ ] 14.8 要求 `sample-invariant-gate` 基于已合入的 `4a guard-rails` 基线执行，不允许裸奔压测
+- [x] 14.8 要求 `sample-invariant-gate` 基于已合入的 `4a guard-rails` 基线执行，不允许裸奔压测
 
 验收标准：
 

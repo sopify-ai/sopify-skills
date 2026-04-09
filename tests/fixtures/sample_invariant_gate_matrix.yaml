@@ -1,0 +1,222 @@
+schema_version: sample_invariant_gate.v1
+asset_version: 2026-04-09-a1-a8-v1
+v1_gate_cases:
+  - A-1_explain_only
+  - A-3_existing_plan_referent
+  - A-4_cancel_checkpoint
+  - A-5_mixed_clause_after_comma
+  - A-6_execution_confirm_state_conflict_evidence_gate
+  - A-8_analysis_only_no_write_process_semantic
+baseline_cases:
+  - A-7_question_like_retopic_baseline
+backlog_cases:
+  - A-2_decision_selection_with_suffix_text
+cases:
+  - case_id: A-1_explain_only
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-1_explain_only_consult_guard
+      required_host_action: answer_questions
+      allowed_response_mode: checkpoint_only
+    positive_examples:
+      - utterance: "解释 runtime gate 为什么这么判，不要改"
+        scenario: router_explain_only_override
+      - utterance: "你之前说：这次又被误路由成 proposal 了。说下原因，不要改。"
+        scenario: runtime_explain_only_consult
+    negative_examples:
+      - utterance: "解释原因并修复 router 的这个误判"
+        scenario: router_explain_only_override
+    boundary_examples:
+      - utterance: "~go 解释 runtime gate 为什么这么判，不要改"
+        scenario: router_explain_only_override
+    forbidden_side_effects:
+      - create_plan_proposal
+      - materialize_plan
+      - submit_checkpoint
+    replay_examples:
+      - utterance: "你之前说：这次又被误路由成 proposal 了。说下原因，不要改。"
+        scenario: runtime_explain_only_consult
+
+  - case_id: A-2_decision_selection_with_suffix_text
+    frozen_role: backlog
+    contract_ref:
+      fail_close_case_id: A-2_decision_selection_with_suffix_text
+      required_host_action: confirm_decision
+      allowed_response_mode: checkpoint_only
+    positive_examples:
+      - utterance: "1，按推荐方案继续"
+        scenario: backlog_only
+    negative_examples:
+      - utterance: "请说明当前 skill 选择策略"
+        scenario: backlog_only
+    boundary_examples:
+      - utterance: "1"
+        scenario: backlog_only
+    forbidden_side_effects:
+      - submit_ambiguous_selection
+
+  - case_id: A-3_existing_plan_referent
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-3_existing_plan_referent_analysis
+      required_host_action: confirm_plan_package
+      allowed_response_mode: checkpoint_only
+    effect_profile:
+      checkpoint_kind: confirm_plan_package
+      resolved_action: stay_in_checkpoint_and_inspect
+      forbidden_state_effects:
+        - materialize_new_plan_package
+        - clear_current_plan_proposal
+        - advance_to_develop
+    positive_examples:
+      - utterance: "为什么是这个方案？"
+        scenario: plan_proposal_inspect
+      - utterance: "继续按这个方案会有什么风险？"
+        scenario: plan_proposal_inspect
+    negative_examples:
+      - utterance: "这个方案改成 runtime gate receipt compaction"
+        scenario: plan_proposal_retopic_new_identity
+    boundary_examples:
+      - utterance: "继续按这个方案吗？"
+        scenario: plan_proposal_inspect
+    forbidden_side_effects:
+      - materialize_new_plan_package
+      - clear_current_plan_proposal
+      - advance_to_develop
+    replay_examples:
+      - utterance: "为什么是这个方案？"
+        scenario: plan_proposal_inspect
+
+  - case_id: A-4_cancel_checkpoint
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-4_cancel_checkpoint_idempotent
+      required_host_action: confirm_execute
+      allowed_response_mode: checkpoint_only
+    positive_examples:
+      - utterance: "取消这个 checkpoint"
+        scenario: decision_pending_cancel
+    negative_examples:
+      - utterance: "不要取消这个 checkpoint"
+        scenario: decision_pending_cancel_guarded
+    boundary_examples:
+      - utterance: "取消这个 checkpoint?"
+        scenario: decision_pending_cancel_question
+    forbidden_side_effects:
+      - derive_new_pending_checkpoint
+      - materialize_new_plan_package
+      - advance_to_develop
+    replay_examples:
+      - utterance: "取消这个 checkpoint"
+        scenario: decision_pending_cancel
+
+  - case_id: A-5_mixed_clause_after_comma
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-5_mixed_clause_conflict
+      required_host_action: review_or_execute_plan
+      allowed_response_mode: normal_runtime_followup
+    effect_profile:
+      checkpoint_kind: confirm_plan_package
+      resolved_action: submit_revision_feedback
+      forbidden_state_effects:
+        - materialize_new_plan_package
+        - clear_current_plan_proposal
+        - rewrite_reserved_plan_id
+    positive_examples:
+      - utterance: "是否把这个方案改成 runtime gate receipt compaction 并补一下风险"
+        scenario: plan_proposal_revise
+      - utterance: "取消这个 checkpoint，不要取消全部"
+        scenario: decision_pending_local_cancel
+    negative_examples:
+      - utterance: "为什么是这个方案？"
+        scenario: plan_proposal_inspect
+    boundary_examples:
+      - utterance: "继续按这个方案会有什么风险？"
+        scenario: plan_proposal_inspect
+    forbidden_side_effects:
+      - materialize_new_plan_package
+      - clear_current_plan_proposal
+      - rewrite_reserved_plan_id
+    replay_examples:
+      - utterance: "是否把这个方案改成 runtime gate receipt compaction 并补一下风险"
+        scenario: plan_proposal_revise
+      - utterance: "取消这个 checkpoint，不要取消全部"
+        scenario: decision_pending_local_cancel
+
+  - case_id: A-6_execution_confirm_state_conflict_evidence_gate
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-6_execution_confirm_state_conflict_abort
+      required_host_action: confirm_execute
+      allowed_response_mode: checkpoint_only
+    positive_examples:
+      - utterance: "status"
+        scenario: ready_plan_conflict_status
+    negative_examples:
+      - utterance: "~go exec"
+        scenario: ready_plan_post_abort_followup
+    boundary_examples:
+      - utterance: "强制取消"
+        scenario: ready_plan_conflict_abort
+    forbidden_side_effects:
+      - recreate_execution_confirm_checkpoint
+      - materialize_new_plan_package
+      - loop_same_conflict
+    evidence_chain:
+      conflict_code: execution_confirm_review_checkpoint_conflict
+      initial_stage: ready_for_execution
+      residual_checkpoint_state: current_plan_proposal
+      inspect_input: status
+      abort_inputs:
+        - 取消
+        - 强制取消
+      post_abort_invariants:
+        cleared_states:
+          - current_plan_proposal
+        preserved_states:
+          - current_plan
+          - current_run
+        stable_stage: ready_for_execution
+        followup_input: "~go exec"
+
+  - case_id: A-7_question_like_retopic_baseline
+    frozen_role: baseline
+    contract_ref:
+      fail_close_case_id: A-7_question_like_retopic_baseline
+      required_host_action: answer_questions
+      allowed_response_mode: checkpoint_only
+    positive_examples:
+      - utterance: "能不能把这个方案改成 runtime gate receipt compaction"
+        scenario: baseline_only
+    negative_examples:
+      - utterance: "继续按这个方案走"
+        scenario: baseline_only
+    boundary_examples:
+      - utterance: "continue with this?"
+        scenario: baseline_only
+    forbidden_side_effects:
+      - mutate_current_request_text_without_revision
+
+  - case_id: A-8_analysis_only_no_write_process_semantic
+    frozen_role: v1_gate
+    contract_ref:
+      fail_close_case_id: A-8_analysis_only_no_write_brake
+      required_host_action: review_or_execute_plan
+      allowed_response_mode: normal_runtime_followup
+    positive_examples:
+      - utterance: "分析下这个方案的评分、风险和还有什么需要我决策"
+        scenario: active_plan_meta_review_router
+    negative_examples:
+      - utterance: "看下这个方案状态，再改下 tasks"
+        scenario: active_plan_followup_edit_router
+    boundary_examples:
+      - utterance: "解释 runtime gate 为什么这么判，不要改"
+        scenario: router_explain_only_override
+    forbidden_side_effects:
+      - checkpoint_submission
+      - plan_materialization
+      - execution
+    replay_examples:
+      - utterance: "分析下这个方案的评分、风险和还有什么需要我决策"
+        scenario: active_plan_meta_review_router
