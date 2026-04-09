@@ -6,6 +6,25 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-04-09.163847] - 2026-04-09
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/action_projection.py`
+  - `runtime/context_builder.py`
+  - `runtime/context_v1_scope.py`
+  - `runtime/deterministic_guard.py`
+  - `runtime/handoff.py`
+  - `runtime/resolution_planner.py`
+  - `runtime/sidecar_classifier_boundary.py`
+  - `runtime/vnext_phase_boundary.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_context_v1_scope.py`
+
 ## [2026-04-08.160810] - 2026-04-08
 
 ### Runtime

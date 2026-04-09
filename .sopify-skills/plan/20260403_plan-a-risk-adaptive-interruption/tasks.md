@@ -85,10 +85,10 @@ plan_status: design_active
 
 ### 3. 局部语义分类骨架
 
-- [ ] 3.1 定义 `Deterministic Guard` 的输入、输出与 fail-close 行为
-- [ ] 3.2 定义 `Local Context Builder` 的最小上下文块，限制 assistant prose 污染
-- [ ] 3.3 定义各 `required_host_action` 对应的 `Action Projection` schema
-- [ ] 3.4 定义 `Resolution Planner` 的标准动作集合与禁止副作用
+- [x] 3.1 定义 `Deterministic Guard` 的输入、输出与 fail-close 行为
+- [x] 3.2 定义 `Local Context Builder` 的最小上下文块，限制 assistant prose 污染
+- [x] 3.3 定义各 `required_host_action` 对应的 `Action Projection` schema
+- [x] 3.4 定义 `Resolution Planner` 的标准动作集合与禁止副作用
 
 验收标准：
 
@@ -97,10 +97,10 @@ plan_status: design_active
 
 ### 4. 参考实现经验的落地转译
 
-- [ ] 4.1 把“规则优先”明确映射到 Sopify 的 runtime facts
-- [ ] 4.2 把“动作语义投影接口”的思想映射为 Sopify 的 action projection contract
-- [ ] 4.3 把“独立侧路判定”明确降级为候选机制，而不是 v1 既定实现
-- [ ] 4.4 写清 `parser-first v1 / hybrid classifier vNext` 的阶段路线与切换条件
+- [x] 4.1 把“规则优先”明确映射到 Sopify 的 runtime facts
+- [x] 4.2 把“动作语义投影接口”的思想映射为 Sopify 的 action projection contract
+- [x] 4.3 把“独立侧路判定”明确降级为候选机制，而不是 v1 既定实现
+- [x] 4.4 写清 `parser-first v1 / hybrid classifier vNext` 的阶段路线与切换条件
 
 验收标准：
 
@@ -306,7 +306,7 @@ plan_status: design_active
 
 - [ ] 14.1 建立 `feature/context-boundary-core`，承载 `1.x + 2.1/2.2 + 9.x + 10.x + 11.x`
 - [ ] 14.2 建立 `feature/public-surface-governance`，承载 `8.x`（允许与 14.1 并行）
-- [ ] 14.3 建立 `feature/context-v1-guard-rails`（4a），承载 `3.x + 4.1-4.3 + 17.1-17.3 + 18.x + 19.x(入口/出口定义)`
+- [x] 14.3 建立 `feature/context-v1-guard-rails`（4a），承载 `3.x + 4.1-4.3 + 17.1-17.3 + 18.x + 19.x(入口/出口定义)`
 - [ ] 14.4 建立 `feature/context-sample-invariant-gate`，承载 `5.x + 6.x`
 - [ ] 14.5 建立 `feature/context-v1-scope-finalize`（4b），承载 `7.x + 17.4`
 - [ ] 14.6 建立 `feature/context-vnext-gate`，承载 `4.4 + 12.x + 13.x`
@@ -362,9 +362,9 @@ plan_status: design_active
 
 ### 17. 可见性级边界锁定
 
-- [ ] 17.1 在 `feature/context-v1-guard-rails` 提交 `runtime/context_v1_scope.py`（常量注册表）
-- [ ] 17.2 至少冻结常量：`SUPPORTED_CHECKPOINT_KINDS_V1`、`ALLOWED_V1_STATE_EFFECTS`、`FORBIDDEN_V1_SIDE_EFFECTS`
-- [ ] 17.3 提交 `tests/test_context_v1_scope.py`，对越界动作做阻断断言
+- [x] 17.1 在 `feature/context-v1-guard-rails` 提交 `runtime/context_v1_scope.py`（常量注册表）
+- [x] 17.2 至少冻结常量：`SUPPORTED_CHECKPOINT_KINDS_V1`、`ALLOWED_V1_STATE_EFFECTS`、`FORBIDDEN_V1_SIDE_EFFECTS`
+- [x] 17.3 提交 `tests/test_context_v1_scope.py`，对越界动作做阻断断言
 - [ ] 17.4 把 `7.1~7.4` 的名单口径映射到上述注册表与测试，不允许“只写文档不落守卫”
 
 验收标准：
