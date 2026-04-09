@@ -6,6 +6,18 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-04-09.224600] - 2026-04-09
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/context_v1_scope.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_context_v1_scope.py`
+
 ## [2026-04-09.203519] - 2026-04-09
 
 ### Runtime

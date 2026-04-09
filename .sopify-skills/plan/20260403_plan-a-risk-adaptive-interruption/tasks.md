@@ -141,10 +141,14 @@ plan_status: design_active
 
 ### 7. ready-to-start checklist
 
-- [ ] 7.1 明确 v1 implementation candidate file map
-- [ ] 7.2 明确哪些模块允许在 v1 变更，哪些只保留为观察点
-- [ ] 7.3 明确 rollout / rollback 与既有对外 contract 主线 compatibility 口径
-- [ ] 7.4 明确“什么时候允许从设计收敛切换到开发实施”
+- [x] 7.1 明确 v1 implementation candidate file map
+  说明：冻结为 `runtime/action_projection.py`、`runtime/context_builder.py`、`runtime/context_v1_scope.py`、`runtime/deterministic_guard.py`、`runtime/handoff.py`、`runtime/resolution_planner.py`，以及配套测试 `tests/test_context_v1_scope.py`、`tests/test_runtime_engine.py`
+- [x] 7.2 明确哪些模块允许在 v1 变更，哪些只保留为观察点
+  说明：`runtime/sidecar_classifier_boundary.py`、`runtime/vnext_phase_boundary.py`、`runtime/contracts/decision_tables.{yaml,schema.json}`、`runtime/failure_recovery.py`、`runtime/engine.py`、`tests/fixtures/sample_invariant_gate_matrix.yaml`、`tests/test_runtime_sample_invariant_gate.py` 冻结为 observe-only
+- [x] 7.3 明确 rollout / rollback 与既有对外 contract 主线 compatibility 口径
+  说明：`required_host_action` 词汇面只允许 additive 扩展；`ExecutionGate` 核心字段与 `gate_status` 值集保持稳定；`decision_tables.v1` 与 sample invariant gate 资产在 4b 中只读；越界时只回滚 candidate file map 内改动，不在本分支重开 observe-only 资产
+- [x] 7.4 明确“什么时候允许从设计收敛切换到开发实施”
+  说明：至少要求 `Checkpoint A + Checkpoint B` 已通过，且 file map 已冻结、scope guard tests 为 green、compatibility 口径已冻结；未满足则继续停在设计收敛
 
 验收标准：
 
@@ -299,6 +303,7 @@ plan_status: design_active
 收口结论（2026-04-08，执行包-3）：`reason_code -> host_facing_message_template`、插值 allowlist、render fallback、same-checkpoint streak 与 legacy quarantine/escape hatch/resume 边界已冻结；下一包入口转为代码实现准备（优先 `9.5 ~ 9.7 + 18.1 ~ 18.6`，并把 `19.5` 作为 Checkpoint A 绑定项一并落地），当前无需新增产品拍板。
 收口结论（2026-04-08，代码实现准备包）：统一真理表资产、独立版本化 schema、stdlib strict loader、模板安全渲染与 preflight/CI 离线校验已落地；`18.6 + 19.5` 已显式绑定 Checkpoint A，下一步转为 `17.x + 3.x/4.x + 5.x/6.x` 的 guard-rails 与样本不变量实现。
 收口结论（2026-04-08，failure family 前置冻结）：`10.1 ~ 10.3` 已按当前统一资产实现口径补齐，`resolution_failure / effect_contract_invalid` 的 family 集、跨 checkpoint 降级映射与 parser-first v1 / vNext classifier 共享失败语义层已收成单一账本；下一步无需再为 failure family 重开设计分支。
+收口结论（2026-04-09，scope-finalize）：v1 candidate file map、observe-only surfaces、compatibility/rollback 口径与“何时允许转开发”门槛已冻结，并已映射到 `runtime/context_v1_scope.py + tests/test_context_v1_scope.py`；下一步只允许在该 allowlist 内进入真正的 v1 implementation。
 
 ## I. 分支矩阵与合并顺序
 
@@ -308,7 +313,7 @@ plan_status: design_active
 - [ ] 14.2 建立 `feature/public-surface-governance`，承载 `8.x`（允许与 14.1 并行）
 - [x] 14.3 建立 `feature/context-v1-guard-rails`（4a），承载 `3.x + 4.1-4.3 + 17.1-17.3 + 18.x + 19.x(入口/出口定义)`
 - [x] 14.4 建立 `feature/context-sample-invariant-gate`，承载 `5.x + 6.x`
-- [ ] 14.5 建立 `feature/context-v1-scope-finalize`（4b），承载 `7.x + 17.4`
+- [x] 14.5 建立 `feature/context-v1-scope-finalize`（4b），承载 `7.x + 17.4`
 - [ ] 14.6 建立 `feature/context-vnext-gate`，承载 `4.4 + 12.x + 13.x`
 - [ ] 14.7 冻结依赖拓扑：`boundary-core -> 4a guard-rails -> sample-invariant-gate -> 4b scope-finalize -> vnext-gate`
 - [x] 14.8 要求 `sample-invariant-gate` 基于已合入的 `4a guard-rails` 基线执行，不允许裸奔压测
@@ -327,12 +332,12 @@ plan_status: design_active
 - [ ] 15.3 新增 CI 强检脚本 `scripts/check-context-checkpoints.py`，缺字段或决策未冻结即 fail
 - [x] 15.4 Checkpoint A 已绑定：`plan_proposal_pending + command prefix` 保持显式 fail-close，A-6 继续留在本方案
 - [ ] 15.5 Checkpoint B 绑定：A-1~A-8 唯一映射与“表格填不平”清零
-- [ ] 15.6 Checkpoint C 绑定：v1 file map/白名单冻结与超范围变更阻断
+- [x] 15.6 Checkpoint C 绑定：v1 file map/白名单冻结与超范围变更阻断
 - [ ] 15.7 Checkpoint D 绑定：vNext 价值/预算/安全/结构门槛冻结
 - [ ] 15.8 Checkpoint A 增加“表资产落地 + Schema 冻结 + 插值安全校验”通过条件
 - [ ] 15.9 Checkpoint A 增加“legacy quarantine + escape hatch + 审计事件”通过条件
 - [ ] 15.10 Checkpoint B 增加“在 4a guard-rails 基线上通过样本压测”通过条件
-- [ ] 15.11 Checkpoint C 增加“仅在 B 通过后锁定白名单与越界阻断”通过条件
+- [x] 15.11 Checkpoint C 增加“仅在 B 通过后锁定白名单与越界阻断”通过条件
 
 验收标准：
 
@@ -365,7 +370,7 @@ plan_status: design_active
 - [x] 17.1 在 `feature/context-v1-guard-rails` 提交 `runtime/context_v1_scope.py`（常量注册表）
 - [x] 17.2 至少冻结常量：`SUPPORTED_CHECKPOINT_KINDS_V1`、`ALLOWED_V1_STATE_EFFECTS`、`FORBIDDEN_V1_SIDE_EFFECTS`
 - [x] 17.3 提交 `tests/test_context_v1_scope.py`，对越界动作做阻断断言
-- [ ] 17.4 把 `7.1~7.4` 的名单口径映射到上述注册表与测试，不允许“只写文档不落守卫”
+- [x] 17.4 把 `7.1~7.4` 的名单口径映射到上述注册表与测试，不允许“只写文档不落守卫”
 
 验收标准：
 
