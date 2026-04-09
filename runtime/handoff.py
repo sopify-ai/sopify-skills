@@ -17,14 +17,35 @@ from .checkpoint_request import (
     checkpoint_request_from_plan_proposal_state,
     normalize_checkpoint_request,
 )
+from .action_projection import ActionProjectionError, build_action_projection, supports_action_projection
 from .clarification import CURRENT_CLARIFICATION_RELATIVE_PATH, build_scope_clarification_form, clarification_submission_state_payload
 from .compare_decision import build_compare_decision_contract
+from .deterministic_guard import (
+    evaluate_deterministic_guard,
+    expected_allowed_response_mode,
+    supports_deterministic_guard,
+)
 from .develop_quality import build_develop_quality_contract, carry_forward_develop_quality_artifacts
 from .decision_policy import has_tradeoff_checkpoint_signal
 from .decision import CURRENT_DECISION_RELATIVE_PATH
 from .entry_guard import build_entry_guard_contract
 from .execution_confirm import build_execution_summary
 from .plan_proposal import CURRENT_PLAN_PROPOSAL_RELATIVE_PATH
+from .resolution_planner import (
+    ResolutionPlannerError,
+    build_resolution_planner,
+    supports_resolution_planner,
+)
+from .sidecar_classifier_boundary import (
+    SidecarClassifierBoundaryError,
+    build_sidecar_classifier_boundary,
+    supports_sidecar_classifier_boundary,
+)
+from .vnext_phase_boundary import (
+    VNextPhaseBoundaryError,
+    build_vnext_phase_boundary,
+    supports_vnext_phase_boundary,
+)
 from .models import KbArtifact, PlanArtifact, RecoveredContext, RouteDecision, RunState, RuntimeConfig, RuntimeHandoff
 
 HANDOFF_SCHEMA_VERSION = "1"
@@ -383,6 +404,12 @@ def _collect_handoff_artifacts(
         ).to_dict()
     if decision.route_name == "execution_confirm_pending" and decision.active_run_action == "revise_execution":
         artifacts["execution_feedback"] = decision.request_text.strip()
+    _attach_v1_guardrail_artifacts(
+        artifacts,
+        required_host_action=required_host_action,
+        current_run=current_run,
+        current_plan=current_plan,
+    )
     return artifacts
 
 
@@ -438,6 +465,80 @@ def _should_attach_execution_summary(*, decision: RouteDecision, current_run: Ru
         return True
     execution_gate = current_run.execution_gate
     return execution_gate is not None and execution_gate.gate_status == "ready"
+
+
+def _attach_v1_guardrail_artifacts(
+    artifacts: dict[str, Any],
+    *,
+    required_host_action: str,
+    current_run: RunState | None,
+    current_plan: PlanArtifact | None,
+) -> None:
+    if not supports_deterministic_guard(required_host_action):
+        return
+
+    allowed_response_mode = expected_allowed_response_mode(required_host_action)
+    if not allowed_response_mode:
+        return
+
+    guard = evaluate_deterministic_guard(
+        allowed_response_mode=allowed_response_mode,
+        required_host_action=required_host_action,
+        current_run=current_run,
+        current_plan=current_plan,
+        plan_id=current_plan.plan_id if current_plan is not None else None,
+        plan_path=current_plan.path if current_plan is not None else None,
+        checkpoint_request=artifacts.get("checkpoint_request")
+        if isinstance(artifacts.get("checkpoint_request"), Mapping)
+        else None,
+        execution_gate=current_run.execution_gate if current_run is not None else artifacts.get("execution_gate"),
+    )
+    artifacts["deterministic_guard"] = guard.to_dict()
+
+    if supports_action_projection(required_host_action):
+        try:
+            projection = build_action_projection(
+                guard,
+                plan_id=current_plan.plan_id if current_plan is not None else None,
+                plan_path=current_plan.path if current_plan is not None else None,
+                current_run=current_run,
+                artifacts=artifacts,
+            )
+        except ActionProjectionError as exc:
+            artifacts["action_projection_error"] = str(exc)
+        else:
+            artifacts["action_projection"] = projection.to_dict()
+
+    planner = None
+    if supports_resolution_planner(required_host_action):
+        try:
+            planner = build_resolution_planner(guard)
+        except ResolutionPlannerError as exc:
+            artifacts["resolution_planner_error"] = str(exc)
+        else:
+            artifacts["resolution_planner"] = planner.to_dict()
+
+    if supports_sidecar_classifier_boundary(required_host_action):
+        if planner is None:
+            artifacts["sidecar_classifier_boundary_error"] = (
+                "Resolution planner unavailable for sidecar boundary"
+            )
+        else:
+            try:
+                boundary = build_sidecar_classifier_boundary(guard, planner)
+            except SidecarClassifierBoundaryError as exc:
+                artifacts["sidecar_classifier_boundary_error"] = str(exc)
+            else:
+                artifacts["sidecar_classifier_boundary"] = boundary.to_dict()
+
+    if not supports_vnext_phase_boundary(required_host_action):
+        return
+    try:
+        phase_boundary = build_vnext_phase_boundary(guard)
+    except VNextPhaseBoundaryError as exc:
+        artifacts["vnext_phase_boundary_error"] = str(exc)
+        return
+    artifacts["vnext_phase_boundary"] = phase_boundary.to_dict()
 
 
 def _should_emit_handoff(*, decision: RouteDecision, current_run: RunState | None, current_plan: PlanArtifact | None) -> bool:
