@@ -9,10 +9,23 @@ from runtime.action_projection import ActionProjectionError, build_action_projec
 from runtime.context_builder import build_local_context
 from runtime.context_v1_scope import (
     ALLOWED_V1_STATE_EFFECTS,
+    CHECKPOINT_C_LOCK_PREREQUISITES,
     FORBIDDEN_V1_SIDE_EFFECTS,
     MAX_LOCAL_CONTEXT_USER_MESSAGES,
     ContextV1ScopeError,
     SUPPORTED_CHECKPOINT_KINDS_V1,
+    V1_COMPATIBILITY_RULES,
+    V1_IMPLEMENTATION_CANDIDATE_FILES,
+    V1_IMPLEMENTATION_RUNTIME_FILES,
+    V1_IMPLEMENTATION_TEST_FILES,
+    V1_OBSERVE_ONLY_FILES,
+    V1_READY_TO_START_LOCAL_REQUIREMENTS,
+    V1_READY_TO_START_REQUIRED_CHECKPOINTS,
+    V1_ROLLBACK_POLICY,
+    V1_ROLLOUT_POLICY,
+    assert_v1_implementation_file_map,
+    assert_v1_ready_to_start,
+    classify_v1_scope_path,
     validate_decision_tables_v1_scope,
 )
 from runtime.deterministic_guard import (
@@ -21,7 +34,12 @@ from runtime.deterministic_guard import (
     evaluate_deterministic_guard,
     expected_allowed_response_mode,
 )
-from runtime.decision_tables import load_default_decision_tables
+from runtime.decision_tables import (
+    DEFAULT_DECISION_TABLES_PATH,
+    DecisionTableError,
+    load_decision_tables,
+    load_default_decision_tables,
+)
 from runtime.resolution_planner import (
     ResolutionPlanner,
     ResolutionPlannerError,
@@ -89,6 +107,158 @@ class ContextV1ScopeTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ContextV1ScopeError, r"Unsupported forbidden V1 state effect"):
             validate_decision_tables_v1_scope(tables)
+
+    def test_checkpoint_c_file_map_is_frozen_into_candidate_and_observe_only_sets(self) -> None:
+        self.assertEqual(
+            V1_IMPLEMENTATION_RUNTIME_FILES,
+            (
+                "runtime/action_projection.py",
+                "runtime/context_builder.py",
+                "runtime/context_v1_scope.py",
+                "runtime/deterministic_guard.py",
+                "runtime/handoff.py",
+                "runtime/resolution_planner.py",
+            ),
+        )
+        self.assertEqual(
+            V1_IMPLEMENTATION_TEST_FILES,
+            (
+                "tests/test_context_v1_scope.py",
+                "tests/test_runtime_engine.py",
+            ),
+        )
+        self.assertEqual(
+            V1_OBSERVE_ONLY_FILES,
+            (
+                "runtime/contracts/decision_tables.schema.json",
+                "runtime/contracts/decision_tables.yaml",
+                "runtime/engine.py",
+                "runtime/failure_recovery.py",
+                "runtime/sidecar_classifier_boundary.py",
+                "runtime/vnext_phase_boundary.py",
+                "tests/fixtures/sample_invariant_gate_matrix.yaml",
+                "tests/test_runtime_sample_invariant_gate.py",
+            ),
+        )
+        self.assertEqual(
+            V1_IMPLEMENTATION_CANDIDATE_FILES,
+            (*V1_IMPLEMENTATION_RUNTIME_FILES, *V1_IMPLEMENTATION_TEST_FILES),
+        )
+        self.assertEqual(CHECKPOINT_C_LOCK_PREREQUISITES, ("Checkpoint B",))
+        self.assertEqual(V1_READY_TO_START_REQUIRED_CHECKPOINTS, ("Checkpoint A", "Checkpoint B"))
+        self.assertEqual(
+            V1_READY_TO_START_LOCAL_REQUIREMENTS,
+            ("file_map_frozen", "scope_guard_tests_green", "compatibility_rules_frozen"),
+        )
+        self.assertEqual(
+            V1_COMPATIBILITY_RULES,
+            (
+                "required_host_action_contract_additive_only",
+                "execution_gate_core_fields_and_gate_status_stable",
+                "decision_tables_v1_assets_readonly_during_scope_finalize",
+                "sample_invariant_gate_assets_readonly_after_checkpoint_b",
+            ),
+        )
+        self.assertEqual(
+            V1_ROLLOUT_POLICY,
+            (
+                "lock_file_map_after_checkpoint_b",
+                "limit_runtime_edits_to_candidate_file_map",
+                "treat_observe_only_files_as_readonly_reference_surfaces",
+            ),
+        )
+        self.assertEqual(
+            V1_ROLLBACK_POLICY,
+            (
+                "revert_candidate_file_changes_to_checkpoint_b_guardrail_baseline_on_scope_violation",
+                "do_not_reopen_observe_only_contract_assets_in_scope_finalize",
+                "move_out_of_scope_contract_expansion_to_followup_branch",
+            ),
+        )
+
+    def test_classify_v1_scope_path_marks_candidate_and_observe_only_surfaces(self) -> None:
+        self.assertEqual(classify_v1_scope_path("runtime/handoff.py"), "candidate_runtime")
+        self.assertEqual(classify_v1_scope_path("./tests/test_runtime_engine.py"), "candidate_test")
+        self.assertEqual(
+            classify_v1_scope_path("tests/fixtures/sample_invariant_gate_matrix.yaml"),
+            "observe_only",
+        )
+        self.assertEqual(classify_v1_scope_path("runtime/decision.py"), "out_of_scope")
+
+    def test_v1_file_map_requires_checkpoint_b_before_allowlist_lock(self) -> None:
+        with self.assertRaisesRegex(ContextV1ScopeError, r"Checkpoint B must pass"):
+            assert_v1_implementation_file_map(
+                ["runtime/handoff.py"],
+                checkpoint_b_passed=False,
+            )
+
+    def test_v1_file_map_rejects_observe_only_files_after_checkpoint_b(self) -> None:
+        with self.assertRaisesRegex(ContextV1ScopeError, r"Observe-only files cannot be edited"):
+            assert_v1_implementation_file_map(
+                ["tests/fixtures/sample_invariant_gate_matrix.yaml"],
+                checkpoint_b_passed=True,
+            )
+
+    def test_v1_file_map_rejects_out_of_scope_runtime_files_after_checkpoint_b(self) -> None:
+        with self.assertRaisesRegex(ContextV1ScopeError, r"Out-of-scope implementation files"):
+            assert_v1_implementation_file_map(
+                ["runtime/decision.py"],
+                checkpoint_b_passed=True,
+            )
+
+    def test_v1_file_map_normalizes_repo_internal_absolute_paths(self) -> None:
+        accepted = assert_v1_implementation_file_map(
+            [str(REPO_ROOT / "runtime" / "handoff.py")],
+            checkpoint_b_passed=True,
+        )
+
+        self.assertEqual(accepted, ("runtime/handoff.py",))
+
+    def test_v1_file_map_rejects_absolute_paths_outside_workspace_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(ContextV1ScopeError, r"workspace root"):
+                assert_v1_implementation_file_map(
+                    [str(Path(temp_dir) / "outside.py")],
+                    checkpoint_b_passed=True,
+                )
+
+    def test_v1_ready_to_start_requires_checkpoint_a_b_and_local_freeze(self) -> None:
+        with self.assertRaisesRegex(ContextV1ScopeError, r"Checkpoint A"):
+            assert_v1_ready_to_start(
+                completed_checkpoints=("Checkpoint B",),
+                changed_files=("runtime/handoff.py",),
+                scope_guard_tests_green=True,
+                compatibility_rules_frozen=True,
+            )
+
+        with self.assertRaisesRegex(ContextV1ScopeError, r"scope guard tests are green"):
+            assert_v1_ready_to_start(
+                completed_checkpoints=("Checkpoint A", "Checkpoint B"),
+                changed_files=("runtime/handoff.py",),
+                scope_guard_tests_green=False,
+                compatibility_rules_frozen=True,
+            )
+
+        with self.assertRaisesRegex(ContextV1ScopeError, r"compatibility rules are frozen"):
+            assert_v1_ready_to_start(
+                completed_checkpoints=("Checkpoint A", "Checkpoint B"),
+                changed_files=("runtime/handoff.py",),
+                scope_guard_tests_green=True,
+                compatibility_rules_frozen=False,
+            )
+
+    def test_v1_ready_to_start_accepts_checkpoint_c_scope_finalize_working_set(self) -> None:
+        accepted = assert_v1_ready_to_start(
+            completed_checkpoints=("Checkpoint A", "Checkpoint B"),
+            changed_files=("runtime/handoff.py", "tests/test_context_v1_scope.py"),
+            scope_guard_tests_green=True,
+            compatibility_rules_frozen=True,
+        )
+
+        self.assertEqual(
+            accepted,
+            ("runtime/handoff.py", "tests/test_context_v1_scope.py"),
+        )
 
 
 class LocalContextBuilderTests(unittest.TestCase):
@@ -407,6 +577,35 @@ class ResolutionPlannerTests(unittest.TestCase):
     def test_resolution_planner_only_applies_to_signal_resolution_actions(self) -> None:
         self.assertTrue(supports_resolution_planner("confirm_execute"))
         self.assertFalse(supports_resolution_planner("continue_host_develop"))
+
+    def test_resolution_planner_fails_closed_when_default_tables_escape_v1_scope(self) -> None:
+        guard = evaluate_deterministic_guard(
+            allowed_response_mode=CHECKPOINT_ONLY,
+            required_host_action="confirm_execute",
+            checkpoint_request={"checkpoint_id": "exec-1", "checkpoint_kind": "execution_confirm"},
+        )
+        mutated_asset = DEFAULT_DECISION_TABLES_PATH.read_text(encoding="utf-8").replace(
+            "        update:\n          - current_run\n",
+            "        update:\n          - current_handoff\n",
+            1,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            asset_path = Path(temp_dir) / "decision_tables.yaml"
+            asset_path.write_text(mutated_asset, encoding="utf-8")
+
+            with patch(
+                "runtime.resolution_planner.load_default_decision_tables",
+                side_effect=lambda: load_decision_tables(asset_path),
+            ):
+                import runtime.resolution_planner as resolution_planner
+
+                resolution_planner._load_resolution_registry.cache_clear()
+                try:
+                    with self.assertRaisesRegex(DecisionTableError, r"exceed current V1 scope"):
+                        build_resolution_planner(guard)
+                finally:
+                    resolution_planner._load_resolution_registry.cache_clear()
 
 
 class SidecarClassifierBoundaryTests(unittest.TestCase):

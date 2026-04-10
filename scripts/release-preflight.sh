@@ -63,6 +63,7 @@ run_step "Check skills sync" bash "$ROOT_DIR/scripts/check-skills-sync.sh"
 run_step "Check version consistency" bash "$ROOT_DIR/scripts/check-version-consistency.sh"
 run_step "Check builtin catalog drift" check_builtin_catalog_drift
 run_step "Check fail-close contract" python3 "$ROOT_DIR/scripts/check-fail-close-contract.py"
+run_step "Check context checkpoints" python3 "$ROOT_DIR/scripts/check-context-checkpoints.py" repo --root "$ROOT_DIR"
 run_step "Run runtime unit tests" python3 -m unittest discover "$ROOT_DIR/tests" -v
 run_step "Run install/payload bootstrap smoke" python3 "$ROOT_DIR/scripts/check-install-payload-bundle-smoke.py"
 run_step "Run prompt runtime gate smoke" python3 "$ROOT_DIR/scripts/check-prompt-runtime-gate-smoke.py"

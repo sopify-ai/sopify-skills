@@ -119,6 +119,20 @@ Side-Effect Mapping
   - 只有动作稳定后，才允许决定:
     - 写哪些状态
     - 暴露哪个 handoff
+
+Handoff Guardrail Artifacts
+  - 对 guard-stable 路由追加:
+    - deterministic_guard
+    - action_projection
+    - resolution_planner
+    - sidecar_classifier_boundary
+    - vnext_phase_boundary
+
+V1 Scope Registry
+  - `runtime/context_v1_scope.py` 冻结:
+    - checkpoint kind allowlist
+    - state effect allowlist / forbidden side effects
+    - candidate file map / observe-only file map
 ```
 
 ### 3.5 安全边界图
@@ -181,6 +195,10 @@ Side-Effect Mapping
 5. `Failure Recovery Table`
 6. `Side-Effect Mapping Table`
 
+当路由命中当前 v1 guardrail 支持面时，handoff 导出层还会附带 `deterministic_guard`、`action_projection`、`resolution_planner`、`sidecar_classifier_boundary`、`vnext_phase_boundary` 五类 artifact，供宿主与调试路径读取同一份局部判定证据。
+
+与之配套，`runtime/context_v1_scope.py` 提供 V1 scope registry：冻结 `checkpoint_kind`、状态副作用 allowlist / forbidden set、candidate file map 与 observe-only file map，并在越界时直接 fail-close。
+
 ### 4.3 末层：宿主执行
 
 末层只负责两件事：
@@ -196,8 +214,9 @@ Side-Effect Mapping
 | --- | --- | --- | --- |
 | gate | runtime gate contract | `status`, `gate_passed`, `allowed_response_mode` | 决定本轮是否允许继续、是否只能 checkpoint 响应 |
 | snapshot | `ContextResolvedSnapshot` | `current_run`, `current_plan`, `current_*`, `is_conflict` | 把分散 state 收敛成唯一 machine truth |
-| handoff | `current_handoff.json` | `required_host_action`, `artifacts`, `route_name` | 约束宿主下一步可执行动作 |
+| handoff | `current_handoff.json` | `required_host_action`, `route_name`, `checkpoint_request`, `deterministic_guard`, `action_projection`, `resolution_planner`, `sidecar_classifier_boundary`, `vnext_phase_boundary` | 约束宿主下一步可执行动作，并暴露本轮 guardrail 证据 |
 | checkpoint state | `current_clarification.json` / `current_decision.json` / `current_plan_proposal.json` / `current_run.json` | `questions`, `options`, `missing_facts`, `execution_gate` | 决定 checkpoint 的具体内容与恢复方式 |
+| v1 scope registry | `runtime/context_v1_scope.py` | `SUPPORTED_CHECKPOINT_KINDS_V1`, `ALLOWED_V1_STATE_EFFECTS`, `FORBIDDEN_V1_SIDE_EFFECTS`, `V1_IMPLEMENTATION_CANDIDATE_FILES`, `V1_OBSERVE_ONLY_FILES` | 冻结 Checkpoint C 白名单、状态副作用边界与越界阻断规则 |
 
 ## 6. 最外层 gate 分支
 
@@ -312,8 +331,6 @@ Side-Effect Mapping
 
 1. Host Output Adapter Matrix 仍未完整成型，目前冻结的是模板规则，不是完整 adapter 层
 2. `cancel_current_checkpoint` 的副作用映射样例仍可继续补齐
-3. **handoff 导出层缺入口**：每次 guarded handoff 会附带 `deterministic_guard`、`action_projection`、`resolution_planner`、`sidecar_classifier_boundary`、`vnext_phase_boundary` 五个 artifact（见 `runtime/handoff.py` `_attach_v1_guardrail_artifacts`），但本文尚未为它们建立交叉引用入口
-4. **V1 scope registry 缺入口**：`runtime/context_v1_scope.py` 作为 V1 边界常量注册表与越界阻断守卫，本文尚未在 V1 scope / side-effect guard 位置建立引用
 
 ## 14. Read Next
 
@@ -321,7 +338,9 @@ Side-Effect Mapping
 
 1. `design.md`：先读 §0 `P0 Freeze | 分层联动矩阵（最小冻结）`，再读三张表、样例行、已拍板产品行为
 2. `tasks.md`：执行真相与待补空档
-3. `runtime/gate.py`
-4. `runtime/context_snapshot.py`
+3. `runtime/context_v1_scope.py`
+4. `runtime/action_projection.py`
 5. `runtime/handoff.py`
-6. `runtime/output.py`
+6. `runtime/gate.py`
+7. `runtime/context_snapshot.py`
+8. `runtime/output.py`

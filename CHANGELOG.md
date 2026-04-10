@@ -6,6 +6,47 @@ This changelog is maintained manually (not auto-generated).
 
 ## [Unreleased]
 
+## [2026-04-10.104951] - 2026-04-10
+
+### Runtime
+
+- Locked the Plan A V1 parser-first release boundary:
+  - enforced V1 decision-table scope validation through the shared loader
+  - normalized repo-internal absolute paths and fail-closed external absolute paths for the V1 file map guard
+
+### Governance
+
+- Enforced Plan A context-checkpoint governance for scoped commits and pull requests:
+  - `commit-msg` checkpoint trailer validation
+  - PR template metadata requirements
+  - CI / preflight checkpoint checks for scoped runtime, test, and governance assets
+
+### Documentation
+
+- Closed the Plan A V1 patch-release narrative:
+  - A/B/C gates are release-ready for V1 parser-first
+  - Checkpoint D and classifier rollout remain deferred to V2
+  - machine-contract overview now documents guardrail handoff artifacts and the V1 scope registry
+
+### Tests
+
+- Expanded automated coverage for:
+  - V1 scope boundary enforcement
+  - context checkpoint governance
+  - release hook behavior
+
+## [2026-04-09.224600] - 2026-04-09
+
+### Runtime
+
+- Updated runtime internals:
+  - `runtime/context_v1_scope.py`
+
+### Tests
+
+- Updated automated coverage:
+  - `tests/test_context_v1_scope.py`
+
 ## [2026-04-09.203519] - 2026-04-09
 
 ### Runtime

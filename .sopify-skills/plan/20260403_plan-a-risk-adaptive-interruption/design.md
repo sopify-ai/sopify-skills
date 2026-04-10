@@ -997,6 +997,24 @@ v1 的标准逃生动作默认冻结为自然语言 `取消` / `强制取消`；
 
 未满足处理：禁止进入 `v1-scope-finalize(4b)` 与 `Ready-for-V1-Execution`。
 
+### 4b Freeze | v1 file map / allowlist / compatibility
+
+本阶段只做范围锁死，不继续扩设计面。冻结结果如下：
+
+1. v1 implementation candidate runtime files 仅限：
+   `runtime/action_projection.py`、`runtime/context_builder.py`、`runtime/context_v1_scope.py`、`runtime/deterministic_guard.py`、`runtime/handoff.py`、`runtime/resolution_planner.py`
+2. v1 supporting test files 仅限：
+   `tests/test_context_v1_scope.py`、`tests/test_runtime_engine.py`
+3. observe-only surfaces 固定为：
+   `runtime/sidecar_classifier_boundary.py`、`runtime/vnext_phase_boundary.py`、`runtime/contracts/decision_tables.yaml`、`runtime/contracts/decision_tables.schema.json`、`runtime/failure_recovery.py`、`runtime/engine.py`、`tests/fixtures/sample_invariant_gate_matrix.yaml`、`tests/test_runtime_sample_invariant_gate.py`
+4. compatibility 口径固定为：
+   `required_host_action` 词汇面只允许 additive 扩展；`ExecutionGate` 核心字段与 `gate_status` 值集保持稳定；`decision_tables.v1` 与 sample invariant gate 资产在 4b 内只读
+5. rollout/rollback 口径固定为：
+   只允许在 `Checkpoint B` 已通过后锁定 file map；implementation 改动只能落在 candidate file map；一旦越界，只回滚 candidate file map 内改动，不在 4b 中重开 observe-only 资产
+6. 从设计收敛切到开发实施的最小门槛固定为：
+   `Checkpoint A + Checkpoint B` 已通过，且 file map 已冻结、scope guard tests 为 green、compatibility 口径已冻结；未满足任一项即继续停在设计收敛
+7. 上述口径必须同时落在 `runtime/context_v1_scope.py` 与 `tests/test_context_v1_scope.py`；只写文档不算 4b 完成
+
 ### Checkpoint C | v1 实施范围锁死
 
 进入条件：`feature/context-v1-scope-finalize` 准备合并。

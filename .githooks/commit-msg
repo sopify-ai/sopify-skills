@@ -15,6 +15,12 @@ if [[ -z "$ROOT_DIR" || ! -d "$ROOT_DIR" ]]; then
   exit 0
 fi
 
+STATE_FILE="$(git -C "$ROOT_DIR" rev-parse --git-path .sopify-release-sync-state)"
+cleanup() {
+  rm -f "$STATE_FILE"
+}
+trap cleanup EXIT
+
 upsert_trailer() {
   local file="$1"
   local key="$2"
@@ -50,33 +56,35 @@ upsert_trailer() {
   printf '\n%s: %s\n' "$key" "$value" >>"$file"
 }
 
-STATE_FILE="$(git -C "$ROOT_DIR" rev-parse --git-path .sopify-release-sync-state)"
+if [[ -f "$STATE_FILE" ]]; then
+  RELEASE_VERSION=""
+  RELEASE_DATE=""
 
-if [[ ! -f "$STATE_FILE" ]]; then
-  exit 0
+  while IFS='=' read -r key value; do
+    case "$key" in
+      RELEASE_VERSION)
+        RELEASE_VERSION="$value"
+        ;;
+      RELEASE_DATE)
+        RELEASE_DATE="$value"
+        ;;
+    esac
+  done <"$STATE_FILE"
+
+  if [[ -z "$RELEASE_VERSION" || -z "$RELEASE_DATE" ]]; then
+    echo "[sopify-release-hook] Invalid release state file: $STATE_FILE" >&2
+    exit 1
+  fi
+
+  upsert_trailer "$MESSAGE_FILE" "Release-Sync" "yes"
+  upsert_trailer "$MESSAGE_FILE" "Release-Version" "$RELEASE_VERSION"
+  upsert_trailer "$MESSAGE_FILE" "Release-Date" "$RELEASE_DATE"
 fi
 
-RELEASE_VERSION=""
-RELEASE_DATE=""
-
-while IFS='=' read -r key value; do
-  case "$key" in
-    RELEASE_VERSION)
-      RELEASE_VERSION="$value"
-      ;;
-    RELEASE_DATE)
-      RELEASE_DATE="$value"
-      ;;
-  esac
-done <"$STATE_FILE"
-
-if [[ -z "$RELEASE_VERSION" || -z "$RELEASE_DATE" ]]; then
-  echo "[sopify-release-hook] Invalid release state file: $STATE_FILE" >&2
-  exit 1
+CHECKPOINT_SCRIPT="$ROOT_DIR/scripts/check-context-checkpoints.py"
+if [[ -f "$CHECKPOINT_SCRIPT" ]]; then
+  python3 "$CHECKPOINT_SCRIPT" commit-msg --root "$ROOT_DIR" --message-file "$MESSAGE_FILE"
 fi
 
-upsert_trailer "$MESSAGE_FILE" "Release-Sync" "yes"
-upsert_trailer "$MESSAGE_FILE" "Release-Version" "$RELEASE_VERSION"
-upsert_trailer "$MESSAGE_FILE" "Release-Date" "$RELEASE_DATE"
-
-rm -f "$STATE_FILE"
+trap - EXIT
+cleanup

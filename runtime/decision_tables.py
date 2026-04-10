@@ -63,7 +63,7 @@ def load_decision_tables(path: str | Path, *, schema_path: str | Path | None = N
     data = _parse_yaml(raw_text)
     if not isinstance(data, dict):
         raise DecisionTableError(f"Decision table root must be a mapping: {source_path}")
-    return _validate_decision_tables(
+    tables = _validate_decision_tables(
         deepcopy(data),
         schema=deepcopy(schema),
         signal_priority_schema=deepcopy(signal_priority_schema),
@@ -71,6 +71,8 @@ def load_decision_tables(path: str | Path, *, schema_path: str | Path | None = N
         host_message_templates_schema=deepcopy(host_message_templates_schema),
         source_path=source_path,
     )
+    _validate_context_v1_scope(tables)
+    return tables
 
 
 def load_decision_tables_schema(path: str | Path) -> dict[str, Any]:
@@ -129,6 +131,15 @@ def _parse_yaml(text: str) -> Any:
         return load_yaml(text)
     except YamlParseError as exc:
         raise DecisionTableError(str(exc)) from exc
+
+
+def _validate_context_v1_scope(tables: dict[str, Any]) -> None:
+    from .context_v1_scope import ContextV1ScopeError, validate_decision_tables_v1_scope
+
+    try:
+        validate_decision_tables_v1_scope(tables)
+    except ContextV1ScopeError as exc:
+        raise DecisionTableError(f"Decision tables exceed current V1 scope: {exc}") from exc
 
 
 def _validate_decision_table_schema(schema: dict[str, Any], *, source_path: Path) -> dict[str, Any]:
